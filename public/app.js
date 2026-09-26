@@ -2060,10 +2060,10 @@ function fallLoop() {
   const pps = judgeY / lead;             // 1 秒あたり何 px 落ちるか
   const n = fall.order.length;
   const botPad = 12;                                       // 本体の下の余白
-  const bodyW = Math.min(W - 16, n * 36);                  // 実物に近い幅で頭打ちにする
+  const bodyW = Math.min(W - 16, n * 46);                  // 実物に近い幅で頭打ちにする
   const bodyX = (W - bodyW) / 2;                           // 残りが左右の余白になる
   const laneW = bodyW / n;
-  const tineW = Math.max(7, Math.min(laneW - 6, 28));      // キー1本の幅
+  const tineW = Math.max(7, Math.min(laneW * 0.72, 32));   // キー1本の幅
 
   /* いまの時刻。停止中は曲の先頭で止めて、これから弾く音が見えるようにする */
   let now = 0;
@@ -2092,9 +2092,11 @@ function fallLoop() {
   }
 
   /* ノーツ */
+  /* カリンバは弾いたら鳴りっぱなしで、押さえ続ける奏法がない。
+     そのためノーツは音の長さで伸ばさず、一定の高さにする */
+  const hgt = 26;
   fall.notes.forEach(nt => {
     const dy = (nt.t - now) * pps;
-    const hgt = Math.max(12, nt.dur * pps - 3);
     if (dy > judgeY + 40 || dy < -hgt - 40) return;
     const y = judgeY - dy;
     nt.lanes.forEach((ln, k) => {
@@ -2107,7 +2109,7 @@ function fallLoop() {
       c.fillStyle = 'rgba(255,255,255,.9)';          // 弾く瞬間の側を明るく
       roundRect(c, x, y - 4, w, 4, 2);
       c.fill();
-      if (hgt > 18 && w >= 16) {
+      if (w >= 16) {
         c.fillStyle = '#fff';
         c.font = '600 12px ' + FONT_JP;
         c.textAlign = 'center';
