@@ -1197,6 +1197,12 @@ function exportPng() {
    10. キーボード
    ============================================================ */
 function onKey(e) {
+  if (!document.getElementById('tutorial').hidden) {
+    if (e.key === 'Escape') { e.preventDefault(); closeTutorial(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); tutMove(1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); tutMove(-1); }
+    return;
+  }
   if (e.key === 'Escape' && !document.getElementById('songs').hidden) {
     e.preventDefault(); closeSongs(); return;
   }
@@ -1777,7 +1783,158 @@ function syncMode() {
 }
 
 /* ============================================================
-   16. 起動
+   17. 使い方チュートリアル
+   ------------------------------------------------------------
+   はじめて開いた人向けに、6 ステップで一通りを説明する。
+   あとからでも「❓ 使い方」でいつでも開ける。
+   ============================================================ */
+const TUT_KEY = 'kalimba-tutorial-seen';
+
+const TUT = [
+  {
+    title: 'カリンバ楽譜メーカーへようこそ',
+    html:
+      '<p>カリンバ用の楽譜を作って、印刷したり、スマホで見たりできるページです。' +
+      '五線譜が読めなくても大丈夫なように、音符の下に <b>3 つの読み方</b>を並べて表示します。</p>' +
+      '<div class="fig">' +
+      '<svg width="300" height="132" viewBox="0 0 300 132" aria-hidden="true">' +
+      '<g stroke="#1c2024" stroke-width="1">' +
+      '<line x1="20" y1="14" x2="280" y2="14"/><line x1="20" y1="24" x2="280" y2="24"/>' +
+      '<line x1="20" y1="34" x2="280" y2="34"/><line x1="20" y1="44" x2="280" y2="44"/>' +
+      '<line x1="20" y1="54" x2="280" y2="54"/></g>' +
+      '<ellipse cx="96" cy="54" rx="6" ry="4.4" transform="rotate(-20 96 54)" fill="#1c2024"/>' +
+      '<path d="M101.6 53.4 V22" stroke="#1c2024" stroke-width="1.6"/>' +
+      '<ellipse cx="186" cy="39" rx="6" ry="4.4" transform="rotate(-20 186 39)" fill="#1c2024"/>' +
+      '<path d="M191.6 38.4 V7" stroke="#1c2024" stroke-width="1.6"/>' +
+      '<g font-family="sans-serif" text-anchor="middle">' +
+      '<text x="96" y="78" font-size="13">ド</text>' +
+      '<text x="96" y="98" font-size="13" font-weight="600">1</text>' +
+      '<text x="96" y="116" font-size="11" fill="#8a919b">C</text>' +
+      '<text x="186" y="78" font-size="13">ソ</text>' +
+      '<text x="186" y="98" font-size="13" font-weight="600">5</text>' +
+      '<text x="186" y="116" font-size="11" fill="#8a919b">G</text>' +
+      '<text x="252" y="78" font-size="10.5" fill="#6b7280" text-anchor="start">← ドレミ</text>' +
+      '<text x="252" y="98" font-size="10.5" fill="#6b7280" text-anchor="start">← 数字譜</text>' +
+      '<text x="252" y="116" font-size="10.5" fill="#6b7280" text-anchor="start">← 音名</text>' +
+      '</g></svg></div>' +
+      '<p><b>数字譜</b>はカリンバのキーに書いてある番号です。' +
+      '高いオクターブは <kbd>1*</kbd> <kbd>1**</kbd> のように <code>*</code> が付きます。</p>' +
+      '<div class="tip">作った曲は<b>お使いの端末の中だけ</b>に保存されます。どこかに送られることはありません。</div>'
+  },
+  {
+    title: '① 音符を入れる',
+    html:
+      '<p>画面のいちばん下に<b>カリンバの鍵盤</b>が並んでいます。実物と同じ並び（真ん中が低い音）です。' +
+      'ここを<b>クリック</b>するか、<kbd>1</kbd>〜<kbd>7</kbd> のキーで音を入れます。' +
+      '<kbd>0</kbd>（鍵盤のいちばん左）は休符です。</p>' +
+      '<p>キーを押したときの動きは、上の<b>「数字キー・鍵盤」</b>で 3 つから選べます（<kbd>M</kbd> でも切り替え）。</p>' +
+      '<ul>' +
+      '<li><b>音程を変更</b> … 今えらんでいる音符の高さを変える（直すとき用）</li>' +
+      '<li><b>音符を追加</b> … 押すたびに音符が増える。<kbd>1234567</kbd> と打てばドレミファソラシ</li>' +
+      '<li><b>リズム入力</b> … 追加に加えて、<b>押した間隔で音符の長さ</b>も決まります</li>' +
+      '</ul>' +
+      '<div class="tip">はじめは「音符を追加」がおすすめです。まず上の<b>テンポ</b>を曲の速さに合わせておくと、あとがラクです。</div>'
+  },
+  {
+    title: '② 高さと長さを直す',
+    html:
+      '<p>音符をクリックして選び、キーで直します。</p>' +
+      '<ul>' +
+      '<li><kbd>↑</kbd> <kbd>↓</kbd> … 高さを 1 つ上下（<kbd>Shift</kbd>+ で 1 オクターブ）</li>' +
+      '<li><kbd>←</kbd> <kbd>→</kbd> … 長さを短く / 長く。<b>音符の上でマウスホイール</b>でも変わります</li>' +
+      '<li><kbd>Tab</kbd> … 次の音符へ（いちばん最後なら音符を 1 つ足します）</li>' +
+      '<li><kbd>.</kbd> 付点　<kbd>T</kbd> タイ　<kbd>Delete</kbd> 削除　<kbd>Ctrl</kbd>+<kbd>Z</kbd> 元に戻す</li>' +
+      '</ul>' +
+      '<p><b>和音</b>は <kbd>C</kbd> で 1 音足せます。' +
+      '和音の中の 1 音だけ直したいときは、<b>その音符の玉をクリック</b>してください。' +
+      '青い丸が付き、<kbd>↑</kbd><kbd>↓</kbd> でその音だけ動き、<kbd>Delete</kbd> でその音だけ外せます。</p>'
+  },
+  {
+    title: '③ まとめて直す',
+    html:
+      '<p>同じフレーズを繰り返すときに便利です。</p>' +
+      '<ul>' +
+      '<li><b>楽譜の上をドラッグ</b>、または <kbd>Shift</kbd>+音符クリックで<b>範囲を選択</b></li>' +
+      '<li>選んだ状態で <kbd>↑</kbd> <kbd>↓</kbd> … <b>まとめて移調</b>（全部の音を同じだけ上下）</li>' +
+      '<li><kbd>←</kbd> <kbd>→</kbd> … 選んだ音符すべての長さを変更</li>' +
+      '<li><kbd>Ctrl</kbd>+<kbd>C</kbd> コピー　<kbd>Ctrl</kbd>+<kbd>V</kbd> 貼り付け　<kbd>Ctrl</kbd>+<kbd>A</kbd> 全選択</li>' +
+      '</ul>' +
+      '<div class="tip">1 小節コピーして貼り付け、そのまま <kbd>↑</kbd> を押せば「4 度上で繰り返し」がすぐ作れます。</div>'
+  },
+  {
+    title: '④ 聞く・練習する',
+    html:
+      '<ul>' +
+      '<li><b>▶ 最初から</b> … 曲の頭から鳴らします（<kbd>Shift</kbd>+<kbd>Space</kbd>）</li>' +
+      '<li><b>▶ ここから</b> … えらんだ音符から鳴らします（<kbd>Space</kbd>）</li>' +
+      '<li><b>🔔 拍</b> … メトロノーム。テンポに合わせてクリック音が鳴ります</li>' +
+      '<li><b>🔇 無音</b> … <b>音を出さずに譜面の進行だけ</b>動きます。' +
+      '自分でカリンバを弾きながら、今どこを弾いているか目で追うためのモードです</li>' +
+      '</ul>' +
+      '<p>再生中は、鳴り終わったところまで<b>背景が水色に塗られて</b>いきます。' +
+      '段が変わると、その段が画面の上に来るように自動でスクロールします。</p>' +
+      '<p>🎤 <b>マイク</b>を押すと、弾いた音を拾って楽譜にすることもできます（単音のみ・下書き用）。</p>'
+  },
+  {
+    title: '⑤ 保存して持ち出す',
+    html:
+      '<p><b>📁 曲・保存</b>を押すと、保存のパネルが開きます。</p>' +
+      '<ul>' +
+      '<li><b>この名前で保存</b> … ブラウザの中に何曲でも保存できます。一覧から開いたり消したり</li>' +
+      '<li><b>🔗 リンクをコピー</b> … 曲の中身が入った URL が作られます。' +
+      '<b>これをスマホに送れば、同じ楽譜がそのまま開きます</b></li>' +
+      '<li><b>PNG</b> … 画像として保存　<b>印刷</b> … 紙や PDF へ（操作パネルは印刷されません）</li>' +
+      '</ul>' +
+      '<p><b>スマホで開いたとき</b>は、画面が狭いので<b>見るための表示</b>になります。' +
+      '下の入力パネルは消え、上は <kbd>☰</kbd> と再生ボタンだけ。' +
+      '<kbd>☰</kbd> を押すとテンポや表示の設定が開きます。</p>' +
+      '<div class="tip">この説明は、右上の <b>❓ 使い方</b> からいつでも読み直せます。</div>'
+  }
+];
+
+let tutStep = 0;
+
+function openTutorial(step) {
+  const box = document.getElementById('tutorial');
+  if (!box) return;
+  tutStep = step || 0;
+  box.hidden = false;
+  renderTutorial();
+}
+function closeTutorial() {
+  document.getElementById('tutorial').hidden = true;
+  try { localStorage.setItem(TUT_KEY, '1'); } catch (e) {}
+}
+function renderTutorial() {
+  const t = TUT[tutStep];
+  document.getElementById('tutTitle').textContent = t.title;
+  /* スマホは見る専用なので、最初にそれを伝えておく */
+  const note = (readOnly && tutStep === 0)
+    ? '<div class="tip">この画面の幅では<b>見る専用</b>です。' +
+      '楽譜を作るのはパソコンで、できた曲は<b>リンク</b>でこの端末に送れます（最後のページで説明します）。</div>'
+    : '';
+  document.getElementById('tutBody').innerHTML = t.html + note;
+  const dots = document.getElementById('tutDots');
+  dots.innerHTML = '';
+  TUT.forEach((_, i) => {
+    const d = document.createElement('i');
+    if (i === tutStep) d.className = 'on';
+    dots.appendChild(d);
+  });
+  document.getElementById('tutPrev').disabled = tutStep === 0;
+  document.getElementById('tutNext').textContent =
+    tutStep === TUT.length - 1 ? 'はじめる' : '次へ →';
+  document.getElementById('tutBody').scrollTop = 0;
+}
+function tutMove(d) {
+  if (tutStep + d < 0) return;
+  if (tutStep + d >= TUT.length) { closeTutorial(); return; }
+  tutStep += d;
+  renderTutorial();
+}
+
+/* ============================================================
+   18. 起動
    ============================================================ */
 function bindUi() {
   const $ = id => document.getElementById(id);
@@ -1850,6 +2007,11 @@ function bindUi() {
     blurAll();
   });
   $('btnSongs').addEventListener('click', () => { openSongs(); blurAll(); });
+  $('btnHelp').addEventListener('click', () => { openTutorial(0); blurAll(); });
+  $('tutClose').addEventListener('click', () => { closeTutorial(); blurAll(); });
+  $('tutPrev').addEventListener('click', () => { tutMove(-1); });
+  $('tutNext').addEventListener('click', () => { tutMove(1); });
+  $('tutorial').addEventListener('mousedown', e => { if (e.target.id === 'tutorial') closeTutorial(); });
   $('songsClose').addEventListener('click', () => { closeSongs(); blurAll(); });
   $('songs').addEventListener('mousedown', e => { if (e.target.id === 'songs') closeSongs(); });
   $('songSave').addEventListener('click', () => { saveSong(); });
@@ -1936,6 +2098,9 @@ function boot() {
   }
   readOnly = window.matchMedia(NARROW).matches;   // 画面の広さだけで決める
   try { setSilent(localStorage.getItem(SILENT_KEY) === '1'); } catch (e) {}
+  let firstTime = true;
+  try { firstTime = localStorage.getItem(TUT_KEY) !== '1'; } catch (e) {}
+  if (firstTime) setTimeout(() => openTutorial(0), 350);   // 描画が落ち着いてから
   if (!state.notes.length) state.notes = [newNote(clampStep(0), 'q', false, true)];
   syncInputs();
   buildDurPalette();

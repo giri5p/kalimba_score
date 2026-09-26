@@ -111,6 +111,23 @@
   .list .empty{padding:14px;text-align:center;color:var(--muted);font-size:12.5px}
   .note{font-size:11.5px;color:var(--muted);line-height:1.7;margin:0}
 
+  /* ---------- チュートリアル ---------- */
+  .box.tut{width:min(600px,100%)}
+  .tutbody{font-size:13.5px;line-height:1.9;min-height:210px}
+  .tutbody p{margin:0 0 10px}
+  .tutbody ul{margin:0 0 10px;padding-left:1.2em}
+  .tutbody li{margin-bottom:5px}
+  .tutbody kbd{font:inherit;font-size:12px;background:#f1f3f7;border:1px solid var(--line);
+               border-bottom-width:2px;border-radius:4px;padding:1px 6px;margin:0 1px;white-space:nowrap}
+  .tutbody .fig{background:#f7f8fa;border:1px solid var(--line);border-radius:8px;
+                padding:10px;margin:0 0 10px;text-align:center}
+  .tutbody .tip{background:#eef5ff;border-left:3px solid var(--accent);
+                padding:7px 10px;border-radius:0 6px 6px 0;font-size:12.5px;color:#31415c}
+  .tutfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px}
+  .dots{display:flex;gap:6px}
+  .dots i{width:7px;height:7px;border-radius:50%;background:var(--line);display:block}
+  .dots i.on{background:var(--accent)}
+
   .hint{font-size:11.5px;color:var(--muted);text-align:center;margin-top:8px;line-height:1.7}
   .hint kbd{font:inherit;font-size:11px;background:#f1f3f7;border:1px solid var(--line);
             border-bottom-width:2px;border-radius:4px;padding:1px 5px;margin:0 1px}
@@ -125,7 +142,9 @@
     .bar{padding:6px 8px;gap:8px;justify-content:center;align-items:center}
     .bar > .sep{display:none}
     .bar .grp{gap:5px}
-    .bar button{padding:7px 10px}
+    .bar button{padding:7px 9px}
+    .bar .lbl{display:none}
+    .tutbody{font-size:13px;min-height:0}
     /* 設定はハンバーガーを押したときだけ、再生ボタンの下の行に開く */
     #btnMenu{order:0}
     .actions{order:1}
@@ -145,6 +164,7 @@
     .micbar .pitch{min-width:0}
     .modal{padding:0}
     .modal .box{border-radius:0;max-height:100vh;height:100%}
+    .modal .box.tut{height:auto}
   }
 
   @media print{
@@ -213,11 +233,30 @@
   <div class="grp actions">
     <button class="pri" id="btnPlayAll" title="Shift+Space">▶ 最初から</button>
     <button id="btnPlayHere" title="Space">▶ ここから</button>
-    <button id="btnMetro" title="メトロノーム">🔔 拍</button>
-    <button id="btnSilent" title="音を出さずに譜面の進行だけ表示します（自分で弾くときの練習用）">🔇 無音</button>
+    <button id="btnMetro" title="メトロノーム">🔔<span class="lbl"> 拍</span></button>
+    <button id="btnSilent" title="音を出さずに譜面の進行だけ表示します（自分で弾くときの練習用）">🔇<span class="lbl"> 無音</span></button>
     <button id="btnMic" class="editOnly" title="マイクで弾いた音を楽譜にします">🎤 マイク</button>
-    <button id="btnSongs">📁 曲・保存</button>
+    <button id="btnSongs" title="曲の保存・読み込み・共有">📁<span class="lbl"> 曲・保存</span></button>
+    <button id="btnHelp" title="使い方を見る">❓<span class="lbl"> 使い方</span></button>
     <input type="file" id="file" accept=".json,application/json" hidden>
+  </div>
+</div>
+
+<!-- 使い方チュートリアル -->
+<div class="modal" id="tutorial" hidden>
+  <div class="box tut">
+    <div class="mhead">
+      <b id="tutTitle"></b>
+      <button id="tutClose" title="閉じる">✕</button>
+    </div>
+    <div id="tutBody" class="tutbody"></div>
+    <div class="tutfoot">
+      <div class="dots" id="tutDots"></div>
+      <div class="mrow" style="margin:0">
+        <button id="tutPrev">← 戻る</button>
+        <button class="pri" id="tutNext">次へ →</button>
+      </div>
+    </div>
   </div>
 </div>
 
