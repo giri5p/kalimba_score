@@ -52,6 +52,30 @@ kalimba/
 - 音符の書き換えはできません（画面を触っても譜面は変わりません）
 - 音符をタップして **▶ ここから** を押せば、その場所から再生できます
 
+## 広告を入れる（忍者AD MAX）
+
+`index.html` の中ほど、コメントで囲まれた場所に空の枠があります。
+
+```html
+<!-- ▼▼▼ 広告枠（忍者AD MAX） ▼▼▼ ... -->
+<div id="ad" class="adbox"></div>
+<!-- ▲▲▲ 広告枠ここまで ▲▲▲ -->
+```
+
+忍者AD MAX で発行された広告タグを、この `div` の**中にそのまま貼り付けて** push すれば反映されます。
+
+```html
+<div id="ad" class="adbox">
+  <script src="https://adm.shinobi.jp/s/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"></script>
+</div>
+```
+
+- 場所は**楽譜の下**（紙の外）です。タグを貼るまでは高さ 0 で、何も表示されず場所も取りません
+- 枠を増やしたいときは、この `div` ごとコピーして `id` を `ad2`, `ad3` … に変えてください
+- **印刷と PNG 書き出しには入りません**
+- 忍者AD MAX のタグは `document.write` を使うことがあるため、
+  JavaScript であとから差し込まず、このように HTML に直接書いてください
+
 ## インターネットに公開する（Cloudflare Pages）
 
 HTML と JavaScript だけの静的サイトなので、ビルドは要りません。

@@ -47,8 +47,12 @@
      止まってしまい、スクロールすると下が背景色になるので flex-start にする */
   #paper{flex:1;overflow:auto;padding:22px 18px 30px;display:flex;
          justify-content:center;align-items:flex-start}
+  #pagecol{width:100%;max-width:1100px}
   #sheet{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.14);border-radius:4px;
-         padding:18px 10px 10px;width:100%;max-width:1100px}
+         padding:18px 10px 10px;width:100%}
+  /* 広告枠。タグを貼るまでは高さ 0 で、何も見えない */
+  .adbox{text-align:center;overflow:hidden}
+  .adbox:not(:empty){margin:16px 0 4px}
   #sheetTitle{text-align:center;font-size:19px;font-weight:600;margin:2px 0 2px}
   #sheetMeta{text-align:center;font-size:12px;color:var(--muted);margin-bottom:6px}
   #score svg{display:block;margin:0 auto;max-width:100%;height:auto}
@@ -176,6 +180,7 @@
     #sheet{box-shadow:none;max-width:none;padding:0}
     #score svg{width:100%!important;height:auto!important}
     #score .cursor,#score .seek{display:none}
+    .adbox{display:none}
   }
   @page{size:A4 portrait;margin:12mm}
 </style>
@@ -292,10 +297,24 @@
 </div>
 
 <div id="paper">
-  <div id="sheet">
-    <div id="sheetTitle"></div>
-    <div id="sheetMeta"></div>
-    <div id="score"></div>
+  <div id="pagecol">
+    <div id="sheet">
+      <div id="sheetTitle"></div>
+      <div id="sheetMeta"></div>
+      <div id="score"></div>
+    </div>
+
+    <!-- ▼▼▼ 広告枠（忍者AD MAX） ▼▼▼
+         忍者AD MAX で発行された広告タグを、下の id="ad" の div の中にそのまま貼り付けてください。
+         例（貼ったあとの形）:
+           [div id="ad" class="adbox"]
+             [script src="https://adm.shinobi.jp/s/xxxxxxxxxxxx"][/script]
+           [/div]
+         タグを貼るまでは何も表示されず、場所も取りません。
+         枠を増やしたいときは、この div ごとコピーして id を ad2, ad3 … に変えてください。
+         印刷と PNG 書き出しには入りません。                    ▼▼▼ -->
+    <div id="ad" class="adbox"></div>
+    <!-- ▲▲▲ 広告枠ここまで ▲▲▲ -->
   </div>
 </div>
 
