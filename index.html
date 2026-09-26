@@ -48,7 +48,7 @@
          padding:18px 10px 10px;width:100%;max-width:1100px}
   #sheetTitle{text-align:center;font-size:19px;font-weight:600;margin:2px 0 2px}
   #sheetMeta{text-align:center;font-size:12px;color:var(--muted);margin-bottom:6px}
-  #score svg{display:block;margin:0 auto}
+  #score svg{display:block;margin:0 auto;max-width:100%;height:auto}
   #score .hit{cursor:pointer}
   #empty{text-align:center;color:var(--muted);padding:40px 0}
 
@@ -113,31 +113,27 @@
             border-bottom-width:2px;border-radius:4px;padding:1px 5px;margin:0 1px}
   .status{font-size:12px;color:var(--muted);text-align:center;margin-top:5px;min-height:18px}
 
-  /* ---------- 閲覧モード（スマホで譜面を広く見るため。編集はしない） ---------- */
-  body.viewonly .panel .prow,
-  body.viewonly #tines,
-  body.viewonly .hint,
-  body.viewonly #modeSeg,
-  body.viewonly #modeSeg + .sep,
-  body.viewonly label.f[for="preset"] + select,
-  body.viewonly #btnMic{display:none}
-  body.viewonly .panel{padding:4px 8px 6px}
-  body.viewonly #score .hit{cursor:default}
-
-  /* ---------- 画面が狭いとき ---------- */
+  /* ---------- 画面が狭いとき（スマホ）は「見る」ことだけに絞る ----------
+     下の入力パネルはまるごと消し、上のツールバーも再生と曲だけにする */
   @media (max-width:760px){
-    .bar{padding:6px 8px;gap:8px}
-    .bar .sep{display:none}
-    .hint{display:none}
-    input[type=text]{min-width:120px}
-    #paper{padding:10px 6px 18px}
-    #sheet{padding:10px 4px 6px;border-radius:0}
-    .panel{padding:6px 8px 8px}
-    .prow{gap:10px}
-    .durs button{min-width:38px;padding:3px 4px 4px}
-    #tines button{width:36px}
+    .panel{display:none}
+    .bar .wide,
+    .bar .sep,
+    #btnMetro,
+    #btnMic{display:none}
+    .bar{padding:6px 8px;gap:8px;justify-content:center}
+    .bar .grp{gap:5px}
+    .bar button{padding:7px 10px}
+    .chk{font-size:12px}
+    #paper{padding:8px 4px 14px}
+    #sheet{padding:8px 2px 4px;border-radius:0;box-shadow:none}
+    #sheetTitle{font-size:16px}
+    #sheetMeta{font-size:11px;margin-bottom:4px}
+    #score .hit{cursor:default}
     .micbar{flex-wrap:wrap;gap:8px}
     .micbar .pitch{min-width:0}
+    .modal{padding:0}
+    .modal .box{border-radius:0;max-height:100vh;height:100%}
   }
 
   @media print{
@@ -154,22 +150,22 @@
 <body>
 
 <div class="bar">
-  <div class="grp">
+  <div class="grp wide">
     <label class="f" for="title">曲名</label>
     <input type="text" id="title" value="無題の曲">
   </div>
-  <div class="grp">
+  <div class="grp wide">
     <label class="f" for="tempo">テンポ</label>
     <input type="number" id="tempo" min="30" max="240" value="90">
   </div>
-  <div class="grp">
+  <div class="grp wide">
     <label class="f" for="timesig">拍子</label>
     <select id="timesig">
       <option>4/4</option><option>3/4</option><option>2/4</option>
       <option>6/8</option><option>3/8</option>
     </select>
   </div>
-  <div class="grp">
+  <div class="grp wide">
     <label class="f" for="perline">1段</label>
     <select id="perline" title="1段に並べる小節数">
       <option value="2">2小節</option><option value="3">3小節</option>
@@ -177,7 +173,7 @@
       <option value="6">6小節</option>
     </select>
   </div>
-  <div class="grp">
+  <div class="grp wide">
     <label class="f" for="preset">カリンバ</label>
     <select id="preset"></select>
   </div>
@@ -188,7 +184,7 @@
     <label class="chk"><input type="checkbox" id="sLet" checked>CDE</label>
   </div>
   <div class="sep"></div>
-  <div class="grp">
+  <div class="grp wide">
     <label class="f">数字キー・鍵盤</label>
     <div class="seg" id="modeSeg">
       <button id="modeEdit" title="M で切り替え">音程を変更</button>
@@ -203,7 +199,6 @@
     <button id="btnMetro" title="メトロノーム">🔔 拍</button>
     <button id="btnMic" title="マイクで弾いた音を楽譜にします">🎤 マイク</button>
     <button id="btnSongs">📁 曲・保存</button>
-    <button id="btnView" title="編集をやめて譜面を広く見ます（スマホ向け）">👁 閲覧</button>
     <input type="file" id="file" accept=".json,application/json" hidden>
   </div>
 </div>

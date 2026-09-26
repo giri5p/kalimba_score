@@ -292,7 +292,7 @@ function render() {
 
   const F = window.Vex.Flow;
   const rows = (state.showSol ? 1 : 0) + (state.showNum ? 1 : 0) + (state.showLet ? 1 : 0);
-  const W = Math.max(560, host.clientWidth || 900);
+  const W = Math.max(300, host.clientWidth || 900);   // スマホ幅でも画面内に収める
   const measures = buildMeasures();
   /* 1段の小節数は固定。すべての小節を同じ幅にし、
      段の先頭に確保する記号ぶん(HEAD_W)もどの段でも同じにして、
@@ -1746,18 +1746,17 @@ function loadFromHash() {
   }
 }
 
-/* ---------- 閲覧モード ----------
-   スマホでは細かい操作がしづらいので、編集をやめて譜面を大きく見られるようにする。
+/* ---------- 画面の広さで「見るだけ」か「編集できる」かを決める ----------
+   スマホ幅では入力パネルを CSS ごと消しているので、編集操作も受け付けない。
    音符を選ぶ（＝そこから再生する）操作だけは残す */
-const VIEW_KEY = 'kalimba-viewonly';
-let readOnly = false;
-function setViewOnly(on) {
-  readOnly = !!on;
-  document.body.classList.toggle('viewonly', readOnly);
-  document.getElementById('btnView').classList.toggle('on', readOnly);
-  try { localStorage.setItem(VIEW_KEY, readOnly ? '1' : '0'); } catch (e) {}
+const NARROW = '(max-width:760px)';
+let readOnly = window.matchMedia(NARROW).matches;
+function syncMode() {
+  const ro = window.matchMedia(NARROW).matches;
+  if (ro === readOnly) return false;
+  readOnly = ro;
   if (readOnly) { setMetro(false); if (mic.on) micStop(); }
-  render();                      // 表示できる幅が変わるので描き直す
+  return true;
 }
 
 /* ============================================================
@@ -1832,7 +1831,6 @@ function bindUi() {
   $('songSave').addEventListener('click', () => { saveSong(); });
   $('songLink').addEventListener('click', () => { copyShareUrl(); });
   $('songName').addEventListener('keydown', e => { if (e.key === 'Enter') saveSong(); });
-  $('btnView').addEventListener('click', () => { setViewOnly(!readOnly); blurAll(); });
   $('songNew').addEventListener('click', () => {
     if (!confirm('今の楽譜を消して新規作成しますか？')) return;
     pushUndo();
@@ -1872,7 +1870,10 @@ function bindUi() {
     $('paper').addEventListener(ev, cancelScrollAnim, { passive: true }));
 
   let rt = null;
-  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(render, 150); });
+  window.addEventListener('resize', () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => { syncMode(); render(); }, 150);
+  });
 }
 
 function syncInputs() {
@@ -1909,15 +1910,7 @@ function boot() {
       if (saved) deserialize(saved);
     } catch (e) { /* 壊れていたら初期状態 */ }
   }
-  /* 画面が狭い端末（スマホ）では、はじめから閲覧モードにしておく */
-  let view = window.innerWidth <= 760;
-  try {
-    const pref = localStorage.getItem(VIEW_KEY);
-    if (pref !== null) view = pref === '1';
-  } catch (e) {}
-  readOnly = view;
-  document.body.classList.toggle('viewonly', readOnly);
-  document.getElementById('btnView').classList.toggle('on', readOnly);
+  readOnly = window.matchMedia(NARROW).matches;   // 画面の広さだけで決める
   if (!state.notes.length) state.notes = [newNote(clampStep(0), 'q', false, true)];
   syncInputs();
   buildDurPalette();
