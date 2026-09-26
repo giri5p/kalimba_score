@@ -38,6 +38,9 @@
   .seg button:last-child{border-radius:0 6px 6px 0}
   .seg button.on{background:var(--accent);border-color:var(--accent);color:#fff;position:relative;z-index:1}
   .seg button.on:hover{background:var(--accent);filter:brightness(1.07)}
+  .settings{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .narrowOnly{display:none}
+  #btnMenu{font-size:17px;line-height:1;padding:6px 11px}
 
   /* ---------- 楽譜 ---------- */
   /* align-items を既定の stretch のままにすると、白い紙の高さが表示領域の高さで
@@ -117,13 +120,21 @@
      下の入力パネルはまるごと消し、上のツールバーも再生と曲だけにする */
   @media (max-width:760px){
     .panel{display:none}
-    .bar .wide,
-    .bar .sep,
-    #btnMetro,
-    #btnMic{display:none}
-    .bar{padding:6px 8px;gap:8px;justify-content:center}
+    .bar .editOnly{display:none}   /* .bar .grp より詳細度を上げる */
+    .narrowOnly{display:inline-block}
+    .bar{padding:6px 8px;gap:8px;justify-content:center;align-items:center}
+    .bar > .sep{display:none}
     .bar .grp{gap:5px}
     .bar button{padding:7px 10px}
+    /* 設定はハンバーガーを押したときだけ、再生ボタンの下の行に開く */
+    #btnMenu{order:0}
+    .actions{order:1}
+    .settings{order:2;width:100%;display:none;gap:10px 14px;
+              padding-top:8px;margin-top:2px;border-top:1px solid var(--line)}
+    body.menuopen .settings{display:flex}
+    .settings .sep{display:none}
+    .settings input[type=text]{min-width:0;flex:1}
+    .settings .grp:first-child{width:100%}
     .chk{font-size:12px}
     #paper{padding:8px 4px 14px}
     #sheet{padding:8px 2px 4px;border-radius:0;box-shadow:none}
@@ -150,54 +161,60 @@
 <body>
 
 <div class="bar">
-  <div class="grp wide">
-    <label class="f" for="title">曲名</label>
-    <input type="text" id="title" value="無題の曲">
-  </div>
-  <div class="grp wide">
-    <label class="f" for="tempo">テンポ</label>
-    <input type="number" id="tempo" min="30" max="240" value="90">
-  </div>
-  <div class="grp wide">
-    <label class="f" for="timesig">拍子</label>
-    <select id="timesig">
-      <option>4/4</option><option>3/4</option><option>2/4</option>
-      <option>6/8</option><option>3/8</option>
-    </select>
-  </div>
-  <div class="grp wide">
-    <label class="f" for="perline">1段</label>
-    <select id="perline" title="1段に並べる小節数">
-      <option value="2">2小節</option><option value="3">3小節</option>
-      <option value="4" selected>4小節</option><option value="5">5小節</option>
-      <option value="6">6小節</option>
-    </select>
-  </div>
-  <div class="grp wide">
-    <label class="f" for="preset">カリンバ</label>
-    <select id="preset"></select>
-  </div>
-  <div class="sep"></div>
-  <div class="grp">
-    <label class="chk"><input type="checkbox" id="sSol" checked>ドレミ</label>
-    <label class="chk"><input type="checkbox" id="sNum" checked>数字</label>
-    <label class="chk"><input type="checkbox" id="sLet" checked>CDE</label>
-  </div>
-  <div class="sep"></div>
-  <div class="grp wide">
-    <label class="f">数字キー・鍵盤</label>
-    <div class="seg" id="modeSeg">
-      <button id="modeEdit" title="M で切り替え">音程を変更</button>
-      <button id="modeAdd" title="M で切り替え">音符を追加</button>
-      <button id="modeTap" title="M で切り替え／押した間隔で長さが決まります">リズム入力</button>
+  <button id="btnMenu" class="narrowOnly" title="設定を開け閉めします" aria-label="設定">☰</button>
+
+  <!-- ハンバーガーで開け閉めする設定群（広い画面では常に出ている） -->
+  <div class="settings" id="barSettings">
+    <div class="grp">
+      <label class="f" for="title">曲名</label>
+      <input type="text" id="title" value="無題の曲">
+    </div>
+    <div class="grp">
+      <label class="f" for="tempo">テンポ</label>
+      <input type="number" id="tempo" min="30" max="240" value="90">
+    </div>
+    <div class="grp">
+      <label class="f" for="timesig">拍子</label>
+      <select id="timesig">
+        <option>4/4</option><option>3/4</option><option>2/4</option>
+        <option>6/8</option><option>3/8</option>
+      </select>
+    </div>
+    <div class="grp">
+      <label class="f" for="perline">1段</label>
+      <select id="perline" title="1段に並べる小節数">
+        <option value="2">2小節</option><option value="3">3小節</option>
+        <option value="4" selected>4小節</option><option value="5">5小節</option>
+        <option value="6">6小節</option>
+      </select>
+    </div>
+    <div class="grp">
+      <label class="f" for="preset">カリンバ</label>
+      <select id="preset"></select>
+    </div>
+    <div class="sep"></div>
+    <div class="grp">
+      <label class="chk"><input type="checkbox" id="sSol" checked>ドレミ</label>
+      <label class="chk"><input type="checkbox" id="sNum" checked>数字</label>
+      <label class="chk"><input type="checkbox" id="sLet" checked>CDE</label>
+    </div>
+    <div class="sep"></div>
+    <div class="grp editOnly">
+      <label class="f">数字キー・鍵盤</label>
+      <div class="seg" id="modeSeg">
+        <button id="modeEdit" title="M で切り替え">音程を変更</button>
+        <button id="modeAdd" title="M で切り替え">音符を追加</button>
+        <button id="modeTap" title="M で切り替え／押した間隔で長さが決まります">リズム入力</button>
+      </div>
     </div>
   </div>
+
   <div class="sep"></div>
-  <div class="grp">
+  <div class="grp actions">
     <button class="pri" id="btnPlayAll" title="Shift+Space">▶ 最初から</button>
     <button id="btnPlayHere" title="Space">▶ ここから</button>
     <button id="btnMetro" title="メトロノーム">🔔 拍</button>
-    <button id="btnMic" title="マイクで弾いた音を楽譜にします">🎤 マイク</button>
+    <button id="btnMic" class="editOnly" title="マイクで弾いた音を楽譜にします">🎤 マイク</button>
     <button id="btnSongs">📁 曲・保存</button>
     <input type="file" id="file" accept=".json,application/json" hidden>
   </div>

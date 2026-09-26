@@ -1825,6 +1825,12 @@ function bindUi() {
   $('btnPng').addEventListener('click', () => { exportPng(); blurAll(); });
   $('btnPrint').addEventListener('click', () => { closeSongs(); blurAll(); setTimeout(() => window.print(), 60); });
   $('songImport').addEventListener('click', () => $('file').click());
+  $('btnMenu').addEventListener('click', () => {
+    document.body.classList.toggle('menuopen');
+    $('btnMenu').classList.toggle('on', document.body.classList.contains('menuopen'));
+    render();                       // 高さが変わるので譜面を描き直す
+    blurAll();
+  });
   $('btnSongs').addEventListener('click', () => { openSongs(); blurAll(); });
   $('songsClose').addEventListener('click', () => { closeSongs(); blurAll(); });
   $('songs').addEventListener('mousedown', e => { if (e.target.id === 'songs') closeSongs(); });
