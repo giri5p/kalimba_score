@@ -1049,12 +1049,12 @@ function buildEvents() {
   return { evs: evs, total: t };
 }
 
-function play(startAt) {
+function play(startAt, leadIn) {
   if (mic.on) micStop();
   stop();
   const c = ac();
   const r = buildEvents();
-  const t0 = c.currentTime + 0.12;
+  const t0 = c.currentTime + 0.12 + (leadIn || 0);
   const from = r.evs.findIndex(e => e.i >= startAt);
   const list = from > 0 ? r.evs.slice(from) : r.evs.slice();
   if (!list.length) return;
@@ -1132,6 +1132,7 @@ function stop() {
   playing = false;
   hidePlayhead();
   syncPlayButtons();
+  if (fall.on) syncFallButtons();
 }
 
 /* 「最初から」「ここから」の 2 つのボタン。鳴っている側が停止ボタンになる */
@@ -1201,6 +1202,11 @@ function exportPng() {
    10. キーボード
    ============================================================ */
 function onKey(e) {
+  if (fall.on) {                                   // 練習画面では再生と終了だけ
+    if (e.key === 'Escape') { e.preventDefault(); closeFall(); }
+    else if (e.key === ' ') { e.preventDefault(); fallTogglePlay(); }
+    return;
+  }
   if (!document.getElementById('tutorial').hidden) {
     if (e.key === 'Escape') { e.preventDefault(); closeTutorial(); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); tutMove(1); }
@@ -1891,6 +1897,8 @@ const TUT = [
       '<li><b>▶ 最初から</b> … 曲の頭から鳴らします（<kbd>Shift</kbd>+<kbd>Space</kbd>）</li>' +
       '<li><b>▶ ここから</b> … えらんだ音符から鳴らします（<kbd>Space</kbd>）</li>' +
       '<li><b>🔔 拍</b> … メトロノーム。テンポに合わせてクリック音が鳴ります</li>' +
+      '<li><b>🎵 練習</b> … カリンバと同じキーの並びに、楽譜どおりの<b>ノーツが上から降ってきます</b>。' +
+      '下の線に届いた瞬間がその音を弾くタイミングです</li>' +
       '<li><b>🔇 無音</b> … <b>音を出さずに譜面の進行だけ</b>動きます。' +
       '自分でカリンバを弾きながら、今どこを弾いているか目で追うためのモードです</li>' +
       '</ul>' +
@@ -1957,7 +1965,272 @@ function tutMove(d) {
 }
 
 /* ============================================================
-   18. 起動
+   19. ノーツ練習画面
+   ------------------------------------------------------------
+   カリンバの実物と同じキーの並びでレーンを作り、楽譜どおりに
+   ノーツを上から落とす。下の判定ラインに届いた瞬間がその音を
+   弾くタイミング。弾くのは人間なので、当たり判定や採点はしない。
+   ============================================================ */
+const FALL_SPEED_KEY = 'kalimba-fall-speed';
+const fall = {
+  on: false, raf: 0, canvas: null, ctx: null,
+  w: 0, h: 0, dpr: 1,
+  notes: [],          // {t, dur, lanes:[..], steps:[..]}
+  order: [],          // 画面左から右へ並べたキーの step
+  speed: 4,           // 1〜10。大きいほど速く落ちる
+  hit: []             // レーンごとの「光らせる残り時間」
+};
+
+const fallLead = () => 6 - fall.speed * 0.5;      // 何秒先まで見えるか
+
+/* 画面に並べるキー（実物と同じ、中央が最低音） */
+function fallLanes() {
+  const p = P();
+  return tineOrder(p.count).map(k => p.base + k);
+}
+
+function openFall() {
+  const box = document.getElementById('fall');
+  if (!box) return;
+  box.hidden = false;
+  fall.on = true;
+  fall.canvas = document.getElementById('fallCanvas');
+  fall.ctx = fall.canvas.getContext('2d');
+  fall.order = fallLanes();
+  fall.hit = fall.order.map(() => 0);
+  buildFallNotes();
+  document.getElementById('fallTempo').value = state.tempo;
+  document.getElementById('fallSpeed').value = fall.speed;
+  syncFallButtons();
+  fallResize();
+  fallLoop();
+}
+
+function closeFall() {
+  fall.on = false;
+  cancelAnimationFrame(fall.raf);
+  stop();
+  const box = document.getElementById('fall');
+  if (box) box.hidden = true;
+}
+
+/* 楽譜から「弾く音」だけを取り出す（タイで伸びている音は弾き直さない） */
+function buildFallNotes() {
+  const lane = {};
+  fall.order.forEach((step, i) => { lane[step] = i; });
+  fall.notes = buildEvents().evs
+    .filter(e => !e.rest && e.p.length)
+    .map(e => ({
+      t: e.t,
+      dur: Math.max.apply(null, e.durs.concat([e.dur])),
+      steps: e.p.slice(),
+      lanes: e.p.map(s => (lane[s] === undefined ? -1 : lane[s]))
+    }));
+}
+
+function fallResize() {
+  if (!fall.canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const r = fall.canvas.getBoundingClientRect();
+  fall.dpr = dpr;
+  fall.w = r.width;
+  fall.h = r.height;
+  fall.canvas.width = Math.round(r.width * dpr);
+  fall.canvas.height = Math.round(r.height * dpr);
+  fall.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+/* オクターブごとに色を変えて、高い音・低い音を見分けやすくする */
+function laneColor(step) {
+  const o = octOf(step);
+  return o <= 4 ? '#4f8bf0' : o === 5 ? '#27b0a6' : '#b072e8';
+}
+
+function fallLoop() {
+  if (!fall.on) return;
+  fall.raf = requestAnimationFrame(fallLoop);
+  const c = fall.ctx;
+  if (!c) return;
+  if (Math.abs(fall.canvas.getBoundingClientRect().width - fall.w) > 1) fallResize();
+
+  const W = fall.w, H = fall.h;
+  const keyH = 122;                      // 下のカリンバ本体の高さ
+  const judgeY = H - keyH;
+  const lead = fallLead();
+  const pps = judgeY / lead;             // 1 秒あたり何 px 落ちるか
+  const n = fall.order.length;
+  const pad = Math.max(6, Math.min(18, W * 0.014));   // 本体の左右の余白
+  const botPad = 12;                                  // 本体の下の余白
+  const bodyX = pad, bodyW = W - pad * 2;
+  const laneW = bodyW / n;
+
+  /* いまの時刻。停止中は曲の先頭で止めて、これから弾く音が見えるようにする */
+  let now = 0;
+  if (playing && playInfo) now = ac().currentTime - playInfo.t0 + playInfo.offset;
+
+  c.clearRect(0, 0, W, H);
+  c.fillStyle = '#0f1420';
+  c.fillRect(0, 0, W, H);
+
+  /* レーンの縞 */
+  for (let i = 0; i < n; i++) {
+    c.fillStyle = i % 2 ? '#141b2a' : '#121826';
+    c.fillRect(bodyX + i * laneW, 0, laneW, judgeY);
+  }
+
+  /* 拍の線（小節のあたまは太く） */
+  const beat = (60 / state.tempo) * (4 / state.beatValue);
+  const barBeats = state.beats;
+  for (let b = Math.ceil(now / beat); b * beat < now + lead; b++) {
+    const y = judgeY - (b * beat - now) * pps;
+    if (y < 0) break;
+    const isBar = ((b % barBeats) + barBeats) % barBeats === 0;
+    c.strokeStyle = isBar ? '#33415e' : '#1e2739';
+    c.lineWidth = isBar ? 2 : 1;
+    c.beginPath(); c.moveTo(bodyX, y + 0.5); c.lineTo(bodyX + bodyW, y + 0.5); c.stroke();
+  }
+
+  /* ノーツ */
+  fall.notes.forEach(nt => {
+    const dy = (nt.t - now) * pps;
+    const hgt = Math.max(12, nt.dur * pps - 3);
+    if (dy > judgeY + 40 || dy < -hgt - 40) return;
+    const y = judgeY - dy;
+    nt.lanes.forEach((ln, k) => {
+      if (ln < 0) return;
+      const x = bodyX + ln * laneW + 3;
+      const w = laneW - 6;
+      c.fillStyle = laneColor(nt.steps[k]);
+      roundRect(c, x, y - hgt, w, hgt, Math.min(7, w / 2));
+      c.fill();
+      c.fillStyle = 'rgba(255,255,255,.9)';          // 弾く瞬間の側を明るく
+      roundRect(c, x, y - 4, w, 4, 2);
+      c.fill();
+      if (hgt > 18 && laneW > 22) {
+        c.fillStyle = '#fff';
+        c.font = '600 12px ' + FONT_JP;
+        c.textAlign = 'center';
+        c.fillText(numberOf(nt.steps[k]), x + w / 2, y - 7);
+      }
+      if (Math.abs(dy) < 0.05 * pps) fall.hit[ln] = 0.2;   // 判定ラインを通過
+    });
+  });
+
+
+  /* 下は実物のカリンバに似せて描く。
+     木の本体の上に、中央ほど長い金属のキーが並ぶ形 */
+  const wood = c.createLinearGradient(0, judgeY, 0, H - botPad);
+  wood.addColorStop(0, '#e0bd94');
+  wood.addColorStop(0.45, '#cda173');
+  wood.addColorStop(1, '#b6885a');
+  c.fillStyle = wood;
+  roundRect(c, bodyX, judgeY, bodyW, keyH - botPad, 14);
+  c.fill();
+
+  const mid = (n - 1) / 2;
+  const tineMax = keyH - 18;
+  const tineStep = Math.min(6, (tineMax - 46) / Math.max(1, mid));
+  for (let i = 0; i < n; i++) {
+    const step = fall.order[i];
+    const len = tineMax - Math.abs(i - mid) * tineStep;   // 中央ほど長い
+    const w = Math.max(6, laneW - 5);
+    const x = bodyX + i * laneW + (laneW - w) / 2;
+    const glow = fall.hit[i] > 0;
+
+    /* キー（金属板）。上端は判定ラインにそろえ、下へ伸ばす */
+    const metal = c.createLinearGradient(x, 0, x + w, 0);
+    if (glow) {
+      metal.addColorStop(0, '#ffffff');
+      metal.addColorStop(0.5, laneColor(step));
+      metal.addColorStop(1, '#9fb4d8');
+    } else {
+      metal.addColorStop(0, '#6f7c8e');
+      metal.addColorStop(0.35, '#e8eef6');
+      metal.addColorStop(0.7, '#aab7c8');
+      metal.addColorStop(1, '#6b7788');
+    }
+    c.fillStyle = metal;
+    roundRect(c, x, judgeY, w, len, [0, 0, w / 2, w / 2]);
+    c.fill();
+
+    /* 番号と階名はキーの上のほう（短いキーにも収まる位置）に書く */
+    if (laneW > 16) {
+      c.textAlign = 'center';
+      c.fillStyle = '#23303f';
+      c.font = '700 13px ' + FONT_JP;
+      c.fillText(numberOf(step), x + w / 2, judgeY + 22);
+      if (laneW > 26) {
+        c.fillStyle = '#5c6a7e';
+        c.font = '11px ' + FONT_JP;
+        c.fillText(solfegeOf(step), x + w / 2, judgeY + 38);
+      }
+    }
+    if (fall.hit[i] > 0) fall.hit[i] -= 1 / 60;
+  }
+
+  /* キーを押さえている金具（ブリッジ）。実物のカリンバにある横棒 */
+  const bar = c.createLinearGradient(0, judgeY + 44, 0, judgeY + 54);
+  bar.addColorStop(0, '#a9834f');
+  bar.addColorStop(1, '#7d5a33');
+  c.fillStyle = bar;
+  c.fillRect(bodyX + 4, judgeY + 44, bodyW - 8, 10);
+
+  /* 判定ライン。キーの上端に重ねて、いちばん手前に描く */
+  c.strokeStyle = 'rgba(255,196,40,.35)';
+  c.lineWidth = 6;
+  c.beginPath(); c.moveTo(bodyX, judgeY); c.lineTo(bodyX + bodyW, judgeY); c.stroke();
+  c.strokeStyle = '#ffc428';
+  c.lineWidth = 2;
+  c.beginPath(); c.moveTo(bodyX, judgeY); c.lineTo(bodyX + bodyW, judgeY); c.stroke();
+
+  const info = document.getElementById('fallInfo');
+  if (info) {
+    const last = fall.notes.length ? fall.notes[fall.notes.length - 1] : null;
+    const total = last ? last.t + last.dur : 0;
+    info.textContent = playing
+      ? (Math.max(0, now) | 0) + ' / ' + (total | 0) + ' 秒'
+      : fall.notes.length + ' 音・' + (total | 0) + ' 秒';
+  }
+}
+
+/* r は数値か [左上, 右上, 右下, 左下] */
+function roundRect(c, x, y, w, h, r) {
+  const a = Array.isArray(r) ? r : [r, r, r, r];
+  const m = Math.min(w, h) / 2;
+  const q = a.map(v => Math.max(0, Math.min(v, m)));
+  c.beginPath();
+  c.moveTo(x + q[0], y);
+  c.lineTo(x + w - q[1], y);
+  c.quadraticCurveTo(x + w, y, x + w, y + q[1]);
+  c.lineTo(x + w, y + h - q[2]);
+  c.quadraticCurveTo(x + w, y + h, x + w - q[2], y + h);
+  c.lineTo(x + q[3], y + h);
+  c.quadraticCurveTo(x, y + h, x, y + h - q[3]);
+  c.lineTo(x, y + q[0]);
+  c.quadraticCurveTo(x, y, x + q[0], y);
+  c.closePath();
+}
+
+function syncFallButtons() {
+  const p = document.getElementById('fallPlay');
+  if (p) p.textContent = playing ? '■ 停止' : '▶ 開始';
+  const m = document.getElementById('fallMetro');
+  if (m) m.classList.toggle('on', metroOn);
+  const s = document.getElementById('fallSilent');
+  if (s) s.classList.toggle('on', silent);
+}
+
+/* 練習画面からの再生。ノーツが落ちてくる時間ぶん、鳴り始めを遅らせる */
+function fallTogglePlay() {
+  if (playing) { stop(); syncFallButtons(); return; }
+  buildFallNotes();
+  playMode = 'all';
+  play(0, fallLead());
+  syncFallButtons();
+}
+
+/* ============================================================
+   20. 起動
    ============================================================ */
 function bindUi() {
   const $ = id => document.getElementById(id);
@@ -2029,6 +2302,22 @@ function bindUi() {
     render();                       // 高さが変わるので譜面を描き直す
     blurAll();
   });
+  $('btnFall').addEventListener('click', () => { openFall(); blurAll(); });
+  $('fallClose').addEventListener('click', () => { closeFall(); blurAll(); });
+  $('fallPlay').addEventListener('click', () => { fallTogglePlay(); blurAll(); });
+  $('fallMetro').addEventListener('click', () => { setMetro(!metroOn); syncFallButtons(); blurAll(); });
+  $('fallSilent').addEventListener('click', () => { setSilent(!silent); syncFallButtons(); blurAll(); });
+  $('fallTempo').addEventListener('change', e => {
+    state.tempo = Math.max(30, Math.min(240, +e.target.value || 90));
+    e.target.value = state.tempo;
+    $('tempo').value = state.tempo;
+    buildFallNotes();
+    syncPanel(); autosave();
+  });
+  $('fallSpeed').addEventListener('input', e => {
+    fall.speed = +e.target.value;
+    try { localStorage.setItem(FALL_SPEED_KEY, String(fall.speed)); } catch (err) {}
+  });
   $('btnSongs').addEventListener('click', () => { openSongs(); blurAll(); });
   $('btnHelp').addEventListener('click', () => { openTutorial(0); blurAll(); });
   $('tutClose').addEventListener('click', () => { closeTutorial(); blurAll(); });
@@ -2081,7 +2370,7 @@ function bindUi() {
   let rt = null;
   window.addEventListener('resize', () => {
     clearTimeout(rt);
-    rt = setTimeout(() => { syncMode(); render(); }, 150);
+    rt = setTimeout(() => { syncMode(); render(); if (fall.on) fallResize(); }, 150);
   });
 }
 
@@ -2121,6 +2410,10 @@ function boot() {
   }
   readOnly = window.matchMedia(NARROW).matches;   // 画面の広さだけで決める
   try { setSilent(localStorage.getItem(SILENT_KEY) === '1'); } catch (e) {}
+  try {
+    const sp = +localStorage.getItem(FALL_SPEED_KEY);
+    if (sp >= 1 && sp <= 10) fall.speed = sp;
+  } catch (e) {}
   let firstTime = true;
   try { firstTime = localStorage.getItem(TUT_KEY) !== '1'; } catch (e) {}
   if (firstTime) setTimeout(() => openTutorial(0), 350);   // 描画が落ち着いてから

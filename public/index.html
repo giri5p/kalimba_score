@@ -119,6 +119,20 @@
   .list .empty{padding:14px;text-align:center;color:var(--muted);font-size:12.5px}
   .note{font-size:11.5px;color:var(--muted);line-height:1.7;margin:0}
 
+  /* ---------- ノーツ練習画面 ---------- */
+  .fall{position:fixed;inset:0;z-index:60;background:#0f1420;display:flex;flex-direction:column}
+  .fall[hidden]{display:none}
+  .fallbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:none;
+           padding:7px 10px;background:#18203050;border-bottom:1px solid #2b3446}
+  .fallbar button{background:#1d2637;border-color:#33405a;color:#dfe6f2}
+  .fallbar button:hover{background:#26324a}
+  .fallbar button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+  .fallbar button.on{background:#2a3c5e;border-color:var(--accent);color:#9ec3ff}
+  .fallbar .f{color:#8d9bb3}
+  .fallbar input[type=number]{width:60px;background:#1d2637;border-color:#33405a;color:#dfe6f2}
+  .fallbar input[type=range]{width:96px}
+  #fallCanvas{flex:1;width:100%;display:block;min-height:0}
+
   /* ---------- チュートリアル ---------- */
   .box.tut{width:min(600px,100%)}
   .tutbody{font-size:13.5px;line-height:1.9;min-height:210px}
@@ -265,10 +279,27 @@ function writeAdmaxTag(tags) {
     <button id="btnMetro" title="メトロノーム">🔔<span class="lbl"> 拍</span></button>
     <button id="btnSilent" title="音を出さずに譜面の進行だけ表示します（自分で弾くときの練習用）">🔇<span class="lbl"> 無音</span></button>
     <button id="btnMic" class="editOnly" title="マイクで弾いた音を楽譜にします">🎤 マイク</button>
+    <button id="btnFall" title="楽譜どおりにノーツが降ってくる練習画面">🎵<span class="lbl"> 練習</span></button>
     <button id="btnSongs" title="曲の保存・読み込み・共有">📁<span class="lbl"> 曲・保存</span></button>
     <button id="btnHelp" title="使い方を見る">❓<span class="lbl"> 使い方</span></button>
     <input type="file" id="file" accept=".json,application/json" hidden>
   </div>
+</div>
+
+<!-- ノーツ練習画面 -->
+<div class="fall" id="fall" hidden>
+  <div class="fallbar">
+    <button id="fallClose">✕<span class="lbl"> 閉じる</span></button>
+    <button class="pri" id="fallPlay">▶ 開始</button>
+    <label class="f" for="fallTempo">テンポ</label>
+    <input type="number" id="fallTempo" min="30" max="240">
+    <label class="f" for="fallSpeed">速さ</label>
+    <input type="range" id="fallSpeed" min="1" max="10" step="1">
+    <button id="fallMetro" title="メトロノーム">🔔</button>
+    <button id="fallSilent" title="音を出さない">🔇</button>
+    <span class="f" id="fallInfo"></span>
+  </div>
+  <canvas id="fallCanvas"></canvas>
 </div>
 
 <!-- 使い方チュートリアル -->
