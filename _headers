@@ -1,0 +1,7 @@
+# Cloudflare Pages 用の配信設定
+/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+# 楽譜描画ライブラリはバージョン固定なので長めにキャッシュ
+/vendor/*
+  Cache-Control: public, max-age=31536000, immutable

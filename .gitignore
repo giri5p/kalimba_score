@@ -1,0 +1,7 @@
+# 自分で作った楽譜は公開サイトに含めない（必要なら行を消してください）
+gakuhu/
+
+# OS が作るファイル
+Thumbs.db
+desktop.ini
+.DS_Store

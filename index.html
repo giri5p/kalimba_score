@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>カリンバ楽譜メーカー</title>
+<style>
+  :root{
+    --bg:#eceef2; --chrome:#ffffff; --ink:#1c2024; --muted:#6b7280;
+    --line:#d7dae0; --accent:#2f6fed; --accent-soft:#e7efff;
+    --tine:#f6f7f9; --tine-on:#2f6fed;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 "Yu Gothic UI","Meiryo","Hiragino Kaku Gothic ProN",system-ui,sans-serif;
+       height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+  /* ---------- ツールバー ---------- */
+  .bar{background:var(--chrome);border-bottom:1px solid var(--line);
+       padding:8px 14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;flex:none}
+  .bar .grp{display:flex;gap:6px;align-items:center}
+  .bar .sep{width:1px;height:24px;background:var(--line)}
+  label.f{font-size:12px;color:var(--muted);white-space:nowrap}
+  input[type=text],input[type=number],select{
+    font:inherit;padding:4px 7px;border:1px solid var(--line);border-radius:6px;background:#fff;color:inherit}
+  input[type=text]{min-width:170px}
+  input[type=number]{width:64px}
+  button{font:inherit;padding:5px 11px;border:1px solid var(--line);border-radius:6px;
+         background:#fff;color:inherit;cursor:pointer}
+  button:hover{background:#f2f4f8}
+  button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.pri:hover{filter:brightness(1.07)}
+  .bar button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+  .chk{display:flex;gap:4px;align-items:center;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
+  .seg{display:flex}
+  .seg button{border-radius:0;margin-left:-1px;font-size:13px;padding:5px 10px}
+  .seg button:first-child{border-radius:6px 0 0 6px;margin-left:0}
+  .seg button:last-child{border-radius:0 6px 6px 0}
+  .seg button.on{background:var(--accent);border-color:var(--accent);color:#fff;position:relative;z-index:1}
+  .seg button.on:hover{background:var(--accent);filter:brightness(1.07)}
+
+  /* ---------- 楽譜 ---------- */
+  /* align-items を既定の stretch のままにすると、白い紙の高さが表示領域の高さで
+     止まってしまい、スクロールすると下が背景色になるので flex-start にする */
+  #paper{flex:1;overflow:auto;padding:22px 18px 30px;display:flex;
+         justify-content:center;align-items:flex-start}
+  #sheet{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.14);border-radius:4px;
+         padding:18px 10px 10px;width:100%;max-width:1100px}
+  #sheetTitle{text-align:center;font-size:19px;font-weight:600;margin:2px 0 2px}
+  #sheetMeta{text-align:center;font-size:12px;color:var(--muted);margin-bottom:6px}
+  #score svg{display:block;margin:0 auto}
+  #score .hit{cursor:pointer}
+  #empty{text-align:center;color:var(--muted);padding:40px 0}
+
+  /* ---------- 入力パネル ---------- */
+  .panel{background:var(--chrome);border-top:1px solid var(--line);padding:9px 14px 12px;flex:none}
+  .prow{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;justify-content:center}
+  .durs{display:flex;gap:4px}
+  .durs button{min-width:42px;padding:4px 6px 5px;text-align:center;line-height:1.15}
+  .durs button svg{display:block;margin:0 auto}
+  .durs button small{display:block;font-size:10px;color:var(--muted)}
+  .durs button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+  .durs button.on small{color:var(--accent)}
+
+  #tines{display:flex;gap:3px;align-items:flex-end;justify-content:center;flex-wrap:nowrap;
+         overflow-x:auto;padding:4px 2px 0}
+  #tines button{width:40px;padding:4px 0 6px;background:var(--tine);border:1px solid var(--line);
+                border-radius:3px 3px 8px 8px;display:flex;flex-direction:column;justify-content:flex-end;
+                gap:1px;align-items:center;flex:none}
+  #tines button .num{font-size:13px;font-weight:600;letter-spacing:.02em}
+  #tines button .sol{font-size:11px;color:var(--muted)}
+  #tines button .let{font-size:9px;color:#9aa1ab}
+  #tines button.on{background:var(--tine-on);border-color:var(--tine-on);color:#fff}
+  #tines button.on .sol,#tines button.on .let{color:#dce7ff}
+  #tines button.restkey{height:54px;margin-right:14px;background:#fff;
+                        border-style:dashed;border-radius:6px;justify-content:center}
+  #tines button.restkey .num{font-size:14px}
+
+  /* ---------- マイク録音バー ---------- */
+  .micbar{display:flex;gap:12px;align-items:center;flex:none;padding:7px 14px;
+          background:#fff3f3;border-top:1px solid #f0c9c9;font-size:13px}
+  .micbar[hidden]{display:none}
+  .micbar .rec{width:10px;height:10px;border-radius:50%;background:#dc2b2b;flex:none;
+               animation:blink 1.1s infinite}
+  @keyframes blink{0%,45%{opacity:1}55%,100%{opacity:.2}}
+  .micbar .meter{width:150px;height:9px;border-radius:5px;background:#e7d5d5;overflow:hidden;flex:none}
+  .micbar .meter i{display:block;height:100%;width:0;background:#dc2b2b;transition:width .05s linear}
+  .micbar .pitch{min-width:150px;font-weight:600;font-variant-numeric:tabular-nums}
+  .micbar input[type=range]{width:110px}
+  .micbar.err{background:#fff8e6;border-top-color:#eddfae}
+  .micbar.err .rec{background:#c98a00;animation:none}
+
+  /* ---------- 曲パネル ---------- */
+  .modal{position:fixed;inset:0;background:rgba(20,24,30,.45);z-index:50;
+         display:flex;align-items:center;justify-content:center;padding:16px}
+  .modal[hidden]{display:none}
+  .modal .box{background:#fff;border-radius:10px;padding:14px 16px 16px;width:min(560px,100%);
+              max-height:86vh;overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,.28)}
+  .mhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:15px}
+  .mrow{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+  .mrow.wrap{flex-wrap:wrap}
+  .mrow input[type=text]{flex:1;min-width:0}
+  .list{border:1px solid var(--line);border-radius:8px;max-height:36vh;overflow:auto;margin-bottom:10px}
+  .list .row{display:flex;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid #eef0f3}
+  .list .row:last-child{border-bottom:0}
+  .list .row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .list .row .sub{font-size:11px;color:var(--muted);flex:none}
+  .list .empty{padding:14px;text-align:center;color:var(--muted);font-size:12.5px}
+  .note{font-size:11.5px;color:var(--muted);line-height:1.7;margin:0}
+
+  .hint{font-size:11.5px;color:var(--muted);text-align:center;margin-top:8px;line-height:1.7}
+  .hint kbd{font:inherit;font-size:11px;background:#f1f3f7;border:1px solid var(--line);
+            border-bottom-width:2px;border-radius:4px;padding:1px 5px;margin:0 1px}
+  .status{font-size:12px;color:var(--muted);text-align:center;margin-top:5px;min-height:18px}
+
+  /* ---------- 閲覧モード（スマホで譜面を広く見るため。編集はしない） ---------- */
+  body.viewonly .panel .prow,
+  body.viewonly #tines,
+  body.viewonly .hint,
+  body.viewonly #modeSeg,
+  body.viewonly #modeSeg + .sep,
+  body.viewonly label.f[for="preset"] + select,
+  body.viewonly #btnMic{display:none}
+  body.viewonly .panel{padding:4px 8px 6px}
+  body.viewonly #score .hit{cursor:default}
+
+  /* ---------- 画面が狭いとき ---------- */
+  @media (max-width:760px){
+    .bar{padding:6px 8px;gap:8px}
+    .bar .sep{display:none}
+    .hint{display:none}
+    input[type=text]{min-width:120px}
+    #paper{padding:10px 6px 18px}
+    #sheet{padding:10px 4px 6px;border-radius:0}
+    .panel{padding:6px 8px 8px}
+    .prow{gap:10px}
+    .durs button{min-width:38px;padding:3px 4px 4px}
+    #tines button{width:36px}
+    .micbar{flex-wrap:wrap;gap:8px}
+    .micbar .pitch{min-width:0}
+  }
+
+  @media print{
+    body{height:auto;overflow:visible;background:#fff;display:block}
+    .bar,.panel{display:none!important}
+    #paper{overflow:visible;padding:0;display:block}
+    #sheet{box-shadow:none;max-width:none;padding:0}
+    #score svg{width:100%!important;height:auto!important}
+    #score .cursor,#score .seek{display:none}
+  }
+  @page{size:A4 portrait;margin:12mm}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="grp">
+    <label class="f" for="title">曲名</label>
+    <input type="text" id="title" value="無題の曲">
+  </div>
+  <div class="grp">
+    <label class="f" for="tempo">テンポ</label>
+    <input type="number" id="tempo" min="30" max="240" value="90">
+  </div>
+  <div class="grp">
+    <label class="f" for="timesig">拍子</label>
+    <select id="timesig">
+      <option>4/4</option><option>3/4</option><option>2/4</option>
+      <option>6/8</option><option>3/8</option>
+    </select>
+  </div>
+  <div class="grp">
+    <label class="f" for="perline">1段</label>
+    <select id="perline" title="1段に並べる小節数">
+      <option value="2">2小節</option><option value="3">3小節</option>
+      <option value="4" selected>4小節</option><option value="5">5小節</option>
+      <option value="6">6小節</option>
+    </select>
+  </div>
+  <div class="grp">
+    <label class="f" for="preset">カリンバ</label>
+    <select id="preset"></select>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <label class="chk"><input type="checkbox" id="sSol" checked>ドレミ</label>
+    <label class="chk"><input type="checkbox" id="sNum" checked>数字</label>
+    <label class="chk"><input type="checkbox" id="sLet" checked>CDE</label>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <label class="f">数字キー・鍵盤</label>
+    <div class="seg" id="modeSeg">
+      <button id="modeEdit" title="M で切り替え">音程を変更</button>
+      <button id="modeAdd" title="M で切り替え">音符を追加</button>
+      <button id="modeTap" title="M で切り替え／押した間隔で長さが決まります">リズム入力</button>
+    </div>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <button class="pri" id="btnPlayAll" title="Shift+Space">▶ 最初から</button>
+    <button id="btnPlayHere" title="Space">▶ ここから</button>
+    <button id="btnMetro" title="メトロノーム">🔔 拍</button>
+    <button id="btnMic" title="マイクで弾いた音を楽譜にします">🎤 マイク</button>
+    <button id="btnSongs">📁 曲・保存</button>
+    <button id="btnView" title="編集をやめて譜面を広く見ます（スマホ向け）">👁 閲覧</button>
+    <input type="file" id="file" accept=".json,application/json" hidden>
+  </div>
+</div>
+
+<!-- 曲の保存・読み込み・共有 -->
+<div class="modal" id="songs" hidden>
+  <div class="box">
+    <div class="mhead">
+      <b>曲</b>
+      <button id="songsClose">閉じる</button>
+    </div>
+    <div class="mrow">
+      <input type="text" id="songName" placeholder="曲の名前">
+      <button class="pri" id="songSave">この名前で保存</button>
+    </div>
+    <div id="songList" class="list"></div>
+    <div class="mrow wrap">
+      <button id="songNew">新規</button>
+      <button id="songLink">🔗 リンクをコピー</button>
+      <button id="songExport">JSONで書き出し</button>
+      <button id="songImport">JSONを読み込む</button>
+      <button id="btnPng">PNG</button>
+      <button id="btnPrint">印刷</button>
+    </div>
+    <input type="text" id="songUrl" readonly hidden
+           style="width:100%;margin-bottom:10px;font-size:12px">
+    <p class="note" id="songNote">
+      保存先は<b>この端末のこのブラウザの中</b>です。別の端末（スマホなど）へ移すときは
+      「🔗 リンクをコピー」で出たURLを送ってください。そのURLを開くと曲がそのまま開きます。
+    </p>
+  </div>
+</div>
+
+<div id="paper">
+  <div id="sheet">
+    <div id="sheetTitle"></div>
+    <div id="sheetMeta"></div>
+    <div id="score"></div>
+  </div>
+</div>
+
+<div class="micbar" id="micbar" hidden>
+  <span class="rec"></span>
+  <span id="micState">マイクを準備中…</span>
+  <div class="meter"><i id="micLevel"></i></div>
+  <label class="f" for="micSens">感度</label>
+  <input type="range" id="micSens" min="3" max="60" value="12">
+  <span class="pitch" id="micPitch">—</span>
+  <button id="micStop">■ 停止</button>
+</div>
+
+<div class="panel">
+  <div class="prow">
+    <div>
+      <div class="f" style="margin-bottom:3px">音符の長さ　<kbd>←</kbd> <kbd>→</kbd> / ホイール</div>
+      <div class="durs" id="durs"></div>
+    </div>
+    <div>
+      <div class="f" style="margin-bottom:3px">編集</div>
+      <div class="durs">
+        <button id="btnRest" title="R">休符</button>
+        <button id="btnDot" title=".">付点</button>
+        <button id="btnTie" title="T">タイ</button>
+        <button id="btnChord" title="C">和音+</button>
+        <button id="btnChordDel" title="Shift+C／選んだ音を外す">和音−</button>
+        <button id="btnIns" title="Enter">挿入</button>
+        <button id="btnDel" title="Delete">削除</button>
+        <button id="btnUndo" title="Ctrl+Z">元に戻す</button>
+      </div>
+    </div>
+    <div>
+      <div class="f" style="margin-bottom:3px">選択</div>
+      <div class="durs">
+        <button id="btnAll" title="Ctrl+A">全選択</button>
+        <button id="btnCopy" title="Ctrl+C">コピー</button>
+        <button id="btnPaste" title="Ctrl+V">貼り付け</button>
+      </div>
+    </div>
+  </div>
+  <div id="tines"></div>
+  <div class="status" id="status"></div>
+  <div class="hint">
+    <kbd>↑</kbd><kbd>↓</kbd> 音程（<kbd>Shift</kbd>+で1オクターブ）　
+    <kbd>←</kbd><kbd>→</kbd> 音符の長さ（音符の上でマウスホイールでも変えられます）
+    <kbd>Tab</kbd> 次の音符へ（末尾なら追加）　<kbd>Shift+Tab</kbd> 前へ
+    <kbd>1</kbd>–<kbd>7</kbd> ドレミ　<kbd>0</kbd> 休符（<kbd>M</kbd> で入力モードを切り替え）<br>
+    <kbd>Enter</kbd> 挿入　<kbd>Delete</kbd> 削除　<kbd>R</kbd> 休符に切替　<kbd>.</kbd> 付点　<kbd>T</kbd> タイ
+    <kbd>C</kbd> 和音追加（<kbd>Shift+C</kbd>で解除）　<kbd>Space</kbd> 再生/停止　<kbd>Ctrl+Z</kbd> 元に戻す<br>
+    <b>複数選択</b>　楽譜上をドラッグ / <kbd>Shift</kbd>+音符クリック / <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd>
+    <kbd>Ctrl+A</kbd> 全選択　<kbd>Esc</kbd> 解除
+    <kbd>Ctrl+C</kbd> コピー　<kbd>Ctrl+X</kbd> 切り取り　<kbd>Ctrl+V</kbd> 貼り付け
+    選択中は <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> や休符・付点がまとめて効きます<br>
+    <b>和音の1音だけ直す</b>　その<b>音符の玉をクリック</b>（または <kbd>[</kbd> <kbd>]</kbd> で選ぶ）→
+    <kbd>↑</kbd><kbd>↓</kbd> で動かす / <kbd>1</kbd>–<kbd>7</kbd>・鍵盤クリックで差し替え /
+    <kbd>Delete</kbd> でその音だけ外す　<kbd>Esc</kbd> で解除
+  </div>
+</div>
+
+<script src="./vendor/vexflow-bravura.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>
