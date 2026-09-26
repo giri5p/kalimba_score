@@ -8,7 +8,7 @@ const url = require('url');
 const { exec } = require('child_process');
 
 const PORT = 8731;
-const ROOT = __dirname;
+const ROOT = path.join(__dirname, 'public');   // 公開するのは public/ の中だけ
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js':   'text/javascript; charset=utf-8',
