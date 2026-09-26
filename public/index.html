@@ -320,7 +320,17 @@
          ・印刷と PNG 書き出しには入りません                        ▼▼▼ -->
     <div id="ad" class="adbox">
       <!-- admax -->
-      <script src="https://adm.shinobi.jp/s/a237c8675187df64785358c0a23f6612"></script>
+      <script>
+      /* 画面の広さで広告の大きさを出し分ける。
+         忍者AD MAX のタグは document.write を使うので、読み込み後に差し込むことができない。
+         そのためページを読んでいるこの位置で、どちらか一方だけを書き出している。
+         （2つ貼って CSS で隠す方法だと、見えない広告まで読み込まれてしまう） */
+      document.write('<scr' + 'ipt src="https://adm.shinobi.jp/s/' +
+        (window.matchMedia('(min-width: 820px)').matches
+          ? '08707ed5e02c0a1f8337135fc620ce06'    /* 728x90  パソコン向け */
+          : 'a237c8675187df64785358c0a23f6612')   /* 300x250 スマホ向け   */
+        + '"></scr' + 'ipt>');
+      </script>
       <!-- admax -->
     </div>
     <!-- ▲▲▲ 広告枠ここまで ▲▲▲ -->
