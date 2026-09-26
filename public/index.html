@@ -123,15 +123,22 @@
   .fall{position:fixed;inset:0;z-index:60;background:#0f1420;display:flex;flex-direction:column}
   .fall[hidden]{display:none}
   .fallbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:none;
-           padding:7px 10px;background:#18203050;border-bottom:1px solid #2b3446}
-  .fallbar button{background:#1d2637;border-color:#33405a;color:#dfe6f2}
+           padding:8px 12px;background:#18203050;border-bottom:1px solid #2b3446;
+           font-size:15px}
+  .fallbar button{background:#1d2637;border-color:#33405a;color:#dfe6f2;
+                  font-size:15px;padding:7px 13px}
   .fallbar button:hover{background:#26324a}
   .fallbar button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
   .fallbar button.on{background:#2a3c5e;border-color:var(--accent);color:#9ec3ff}
-  .fallbar .f{color:#8d9bb3}
-  .fallbar input[type=number]{width:60px;background:#1d2637;border-color:#33405a;color:#dfe6f2}
-  .fallbar input[type=range]{width:96px}
-  #fallCanvas{flex:1;width:100%;display:block;min-height:0}
+  .fallbar .f{color:#8d9bb3;font-size:14px}
+  .fallbar input[type=number]{width:68px;background:#1d2637;border-color:#33405a;
+                              color:#dfe6f2;font-size:15px}
+  .fallbar input[type=range]{width:110px}
+  /* 上下ドラッグで再生位置を動かせるので、ブラウザのスクロールは切っておく */
+  #fallCanvas{flex:1;width:100%;display:block;min-height:0;touch-action:none;cursor:grab}
+  #fallCanvas.drag{cursor:grabbing}
+  .fallhint{color:#6d7b93}
+  @media (max-width:760px){.fallhint{display:none}}
 
   /* ---------- チュートリアル ---------- */
   .box.tut{width:min(600px,100%)}
@@ -291,6 +298,7 @@ function writeAdmaxTag(tags) {
   <div class="fallbar">
     <button id="fallClose">✕<span class="lbl"> 閉じる</span></button>
     <button class="pri" id="fallPlay">▶ 開始</button>
+    <button id="fallStop" title="最初に戻す">■</button>
     <label class="f" for="fallTempo">テンポ</label>
     <input type="number" id="fallTempo" min="30" max="240">
     <label class="f" for="fallSpeed">速さ</label>
@@ -298,8 +306,9 @@ function writeAdmaxTag(tags) {
     <button id="fallMetro" title="メトロノーム">🔔</button>
     <button id="fallSilent" title="音を出さない">🔇</button>
     <span class="f" id="fallInfo"></span>
+    <span class="f fallhint">画面を上下にドラッグすると再生位置を動かせます</span>
   </div>
-  <canvas id="fallCanvas"></canvas>
+  <canvas id="fallCanvas" title="上下にドラッグすると再生位置が動きます"></canvas>
 </div>
 
 <!-- 使い方チュートリアル -->
