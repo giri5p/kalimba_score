@@ -52,7 +52,7 @@
          padding:18px 10px 10px;width:100%}
   /* 広告枠。タグを貼るまでは高さ 0 で、レイアウトに影響しない */
   .adbox{text-align:center;overflow:hidden}
-  .adbox:not(:empty){margin:16px 0 4px}
+  .adbox:not(:empty){margin:0 0 16px}
   .sitefoot{text-align:center;padding:12px 0 2px;font-size:12px}
   .sitefoot a{color:var(--muted)}
   .sitefoot a:hover{color:var(--accent)}
@@ -341,12 +341,6 @@
 
 <div id="paper">
   <div id="pagecol">
-    <div id="sheet">
-      <div id="sheetTitle"></div>
-      <div id="sheetMeta"></div>
-      <div id="score"></div>
-    </div>
-
     <!-- ▼▼▼ 広告枠（忍者AD MAX） ▼▼▼
          忍者AD MAX で発行された広告タグを、下の id="ad" の div の中にそのまま貼り付けてください。
          貼ったあとの形（例）:
@@ -357,6 +351,7 @@
          ・忍者AD MAX のタグは document.write を使うことがあるため、JavaScript で
            あとから差し込まず、このように HTML に直接書いてください
          ・枠を増やしたいときは、この div ごとコピーして id を ad2, ad3 … に
+         ・楽譜の上に出します（下だと見られないまま使われてしまうため）
          ・印刷と PNG 書き出しには入りません                        ▼▼▼ -->
     <div id="ad" class="adbox">
       <!-- admax -->
@@ -379,6 +374,12 @@
       <!-- admax -->
     </div>
     <!-- ▲▲▲ 広告枠ここまで ▲▲▲ -->
+
+    <div id="sheet">
+      <div id="sheetTitle"></div>
+      <div id="sheetMeta"></div>
+      <div id="score"></div>
+    </div>
 
     <div class="sitefoot">
       <a href="about.html">このサイトについて</a>
