@@ -1819,7 +1819,10 @@ const TUT = [
       '</g></svg></div>' +
       '<p><b>数字譜</b>はカリンバのキーに書いてある番号です。' +
       '高いオクターブは <kbd>1*</kbd> <kbd>1**</kbd> のように <code>*</code> が付きます。</p>' +
-      '<div class="tip">作った曲は<b>お使いの端末の中だけ</b>に保存されます。どこかに送られることはありません。</div>'
+      '<div class="tip">作った曲は<b>お使いの端末の中だけ</b>に保存されます。どこかに送られることはありません。</div>' +
+      '<div class="tip"><b>スマホなど画面の狭い端末では「見るための表示」</b>になり、' +
+      '音符の書き換えはできません。楽譜を作るのはパソコンで、' +
+      'できた曲を<b>リンクにしてスマホへ送って見る</b>、という使い方を想定しています。</div>'
   },
   {
     title: '① 音符を入れる',
@@ -1910,8 +1913,8 @@ function renderTutorial() {
   document.getElementById('tutTitle').textContent = t.title;
   /* スマホは見る専用なので、最初にそれを伝えておく */
   const note = (readOnly && tutStep === 0)
-    ? '<div class="tip">この画面の幅では<b>見る専用</b>です。' +
-      '楽譜を作るのはパソコンで、できた曲は<b>リンク</b>でこの端末に送れます（最後のページで説明します）。</div>'
+    ? '<p style="margin:0;font-size:12.5px;color:#31415c">' +
+      '↑ いま開いているこの画面が、その<b>見るための表示</b>です。</p>'
     : '';
   document.getElementById('tutBody').innerHTML = t.html + note;
   const dots = document.getElementById('tutDots');
