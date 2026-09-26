@@ -52,7 +52,8 @@
          padding:18px 10px 10px;width:100%}
   /* 広告枠。タグを貼るまでは高さ 0 で、レイアウトに影響しない */
   .adbox{text-align:center;overflow:hidden}
-  .adbox:not(:empty){margin:0 0 16px}
+  .adbox:not(:empty){margin:16px 0}
+  #ad:not(:empty){margin:0 0 16px}      /* 楽譜の上の枠は、上の余白はいらない */
   .sitefoot{text-align:center;padding:12px 0 2px;font-size:12px}
   .sitefoot a{color:var(--muted)}
   .sitefoot a:hover{color:var(--accent)}
@@ -187,6 +188,24 @@
   }
   @page{size:A4 portrait;margin:12mm}
 </style>
+
+<script>
+/* 広告（忍者AD MAX）を枠に書き出す。
+   タグが document.write を使うので、あとから JavaScript で差し込むことはできない。
+   枠の位置でこの関数を呼び、その場でタグを読み込ませる。
+
+   1つの枠につきタグは1つだけ選ぶ。複数貼って CSS で隠すと、
+   見えない広告まで読み込まれてしまうため。
+
+   スマホ用タグは、端末がスマホでないと中身が空で返ってくる。
+   そのため画面の広さだけでなく、端末の種類も見て選んでいる。 */
+function writeAdmaxTag(tags) {
+  var sp   = /Android|iPhone|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent);
+  var wide = window.matchMedia('(min-width: 820px)').matches;
+  var tag  = sp ? tags.sp : (wide ? tags.pc : tags.pcNarrow);
+  document.write('<scr' + 'ipt src="https://adm.shinobi.jp/s/' + tag + '"><' + '/scr' + 'ipt>');
+}
+</script>
 </head>
 <body>
 
@@ -301,45 +320,45 @@
 
 <div id="paper">
   <div id="pagecol">
-    <!-- ▼▼▼ 広告枠（忍者AD MAX） ▼▼▼
-         忍者AD MAX で発行された広告タグを、下の id="ad" の div の中にそのまま貼り付けてください。
-         貼ったあとの形（例）:
-           [div id="ad" class="adbox"]
-             [script src="https://adm.shinobi.jp/s/xxxxxxxxxxxx"][/script]
-           [/div]
+    <!-- ▼▼▼ 広告枠 1（楽譜の上・忍者AD MAX） ▼▼▼
+         枠は 2 つあります。こちらは楽譜の上（開いてすぐ目に入る場所）。
+         もう 1 つは楽譜の下、「このサイトについて」リンクの上にあります。
+
+         タグを差し替えるときは、下の writeAdmaxTag(...) の中の ID だけを
+         忍者AD MAX で発行されたものに書き換えてください。
+         ・上の枠は、縦に場所を取りすぎないサイズのタグにしています
          ・タグを貼るまでは高さ 0 で、何も表示されず場所も取りません
-         ・忍者AD MAX のタグは document.write を使うことがあるため、JavaScript で
-           あとから差し込まず、このように HTML に直接書いてください
-         ・枠を増やしたいときは、この div ごとコピーして id を ad2, ad3 … に
-         ・楽譜の上に出します（下だと見られないまま使われてしまうため）
          ・印刷と PNG 書き出しには入りません                        ▼▼▼ -->
     <div id="ad" class="adbox">
       <!-- admax -->
-      <script>
-      /* 忍者AD MAX のタグは document.write を使うので、読み込み後には差し込めない。
-         そのためページを読んでいるこの位置で、条件に合う1つだけを書き出している。
-         （2つ貼って CSS で隠すと、見えない広告まで読み込まれてしまう）
-
-         スマホ用タグ(SP)は端末がスマホでないと中身が空で返るため、
-         画面の広さだけでなく端末の種類も見て選ぶ。 */
-      (function () {
-        var sp   = /Android|iPhone|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent);
-        var wide = window.matchMedia('(min-width: 820px)').matches;
-        var tag = sp   ? '30e16568e9eed3a68c1e55b79f460992'   /* スマホ用       */
-                : wide ? '08707ed5e02c0a1f8337135fc620ce06'   /* PC 728x90      */
-                       : 'a237c8675187df64785358c0a23f6612';  /* PC 狭幅 300x250 */
-        document.write('<scr' + 'ipt src="https://adm.shinobi.jp/s/' + tag + '"><' + '/scr' + 'ipt>');
-      })();
-      </script>
+      <script>writeAdmaxTag({
+        sp:       '8e129ef782a16e8c0519fc795b04c934',   /* スマホ  320x100 */
+        pc:       '08707ed5e02c0a1f8337135fc620ce06',   /* PC      728x90  */
+        pcNarrow: 'a237c8675187df64785358c0a23f6612'    /* PC 狭幅 300x250 */
+      });</script>
       <!-- admax -->
     </div>
-    <!-- ▲▲▲ 広告枠ここまで ▲▲▲ -->
+    <!-- ▲▲▲ 広告枠 1 ここまで ▲▲▲ -->
 
     <div id="sheet">
       <div id="sheetTitle"></div>
       <div id="sheetMeta"></div>
       <div id="score"></div>
     </div>
+
+    <!-- ▼▼▼ 広告枠 2（楽譜の下・忍者AD MAX） ▼▼▼
+         下まで読んでくれた人向けの枠。ここは縦に場所を取っても困らないので、
+         スマホでは大きめ（300x250）のタグを使っています。            ▼▼▼ -->
+    <div id="ad2" class="adbox">
+      <!-- admax -->
+      <script>writeAdmaxTag({
+        sp:       '30e16568e9eed3a68c1e55b79f460992',   /* スマホ  300x250 */
+        pc:       '08707ed5e02c0a1f8337135fc620ce06',   /* PC      728x90  */
+        pcNarrow: 'a237c8675187df64785358c0a23f6612'    /* PC 狭幅 300x250 */
+      });</script>
+      <!-- admax -->
+    </div>
+    <!-- ▲▲▲ 広告枠 2 ここまで ▲▲▲ -->
 
     <div class="sitefoot">
       <a href="about.html">このサイトについて</a>
