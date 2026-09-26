@@ -241,6 +241,7 @@ let sysGeom = [];       // sysGeom[段] = {top, bot, left, right}
 let seekRects = [];     // 段ごとの「ここまで再生した」帯
 let seekEdge = null;    // 再生位置を示す縦線
 let anchorLine = -1;    // いま画面の上端に合わせている段
+let booted = false;     // 起動時の1回目の描画が終わったか
 let selGroup = null;
 
 function svgEl(tag, attrs) {
@@ -527,6 +528,9 @@ function drawSelection(scroll) {
   if (gc && scroll !== false) scrollIntoView(gc);
 }
 function scrollIntoView(g, follow) {
+  /* 開いた直後はページのいちばん上（広告や曲名）が見えていてほしいので、
+     起動時の描画では動かさない */
+  if (!booted) return;
   const paper = document.getElementById('paper');
   const svg = document.querySelector('#score svg');
   if (!svg) return;
@@ -2542,6 +2546,7 @@ function boot() {
   buildDurPalette();
   buildTines();
   refresh();
+  booted = true;
   if (isFallPath()) openFall(true);       // /practice で来たらそのまま練習画面
 }
 
