@@ -1210,6 +1210,10 @@ function exportPng() {
    10. キーボード
    ============================================================ */
 function onKey(e) {
+  if (adModalOpen()) {                             // 広告モーダル中は閉じるだけ
+    if (e.key === 'Escape') { e.preventDefault(); closeAdModal(); }
+    return;
+  }
   if (fall.on) {                                   // 練習画面では再生と終了だけ
     if (e.key === 'Escape') { e.preventDefault(); closeFall(); }
     else if (e.key === ' ') { e.preventDefault(); fallTogglePlay(); }
@@ -2035,12 +2039,55 @@ function fallLanes() {
   return tineOrder(p.count).map(k => p.base + k);
 }
 
+/* 練習画面を開いたときに出す広告モーダル。
+   ページを開いてから1回だけ。閉じたあとは練習の邪魔をしない。
+
+   忍者AD MAX のタグは document.write を使うので、あとから差し込めない。
+   そこで広告だけを載せた ad-frame.html を iframe で読み込んでいる。
+   練習画面の HTML に直接書いてしまうと、練習画面を開かない人にも
+   広告が読み込まれてしまうため。
+
+   どのタグを使うかは、こちら（本物の画面幅が分かる側）で決めて
+   ad-frame.html に渡す。iframe の幅は広告ぴったりにするので、
+   あちら側で画面幅を測ると違う答えになってしまう。 */
+let adModalDone = false;
+function showAdModal() {
+  const m = document.getElementById('adModal');
+  const slot = document.getElementById('adModalSlot');
+  if (!m || !slot || adModalDone) return;
+  adModalDone = true;
+  const sp   = /Android|iPhone|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent);
+  const wide = window.matchMedia('(min-width: 820px)').matches;
+  const kind = sp ? 'sp' : (wide ? 'pc' : 'narrow');
+  const w = sp ? 320 : (wide ? 728 : 300);   // ad-frame.html が出すタグの大きさ
+  const h = sp ? 100 : (wide ?  90 : 250);
+  const f = document.createElement('iframe');
+  f.src = 'ad-frame.html?s=' + kind;
+  f.title = '広告';
+  f.setAttribute('scrolling', 'no');
+  f.style.width = w + 'px';
+  f.style.height = h + 'px';
+  slot.style.width = w + 'px';
+  slot.style.height = h + 'px';
+  slot.appendChild(f);
+  m.hidden = false;
+}
+function closeAdModal() {
+  const m = document.getElementById('adModal');
+  if (m) m.hidden = true;
+}
+function adModalOpen() {
+  const m = document.getElementById('adModal');
+  return !!m && !m.hidden;
+}
+
 /* back は「ブラウザの戻る／進むで来た」ときに true。そのときは URL をいじらない */
 function openFall(back) {
   const box = document.getElementById('fall');
   if (!box) return;
   if (!back) goPath(fallPath(), { fall: 1 });
   box.hidden = false;
+  showAdModal();
   fall.on = true;
   fall.canvas = document.getElementById('fallCanvas');
   fall.ctx = fall.canvas.getContext('2d');
@@ -2058,6 +2105,7 @@ function openFall(back) {
 }
 
 function closeFall(back) {
+  closeAdModal();
   fall.on = false;
   cancelAnimationFrame(fall.raf);
   stop();
@@ -2113,7 +2161,8 @@ function fallLoop() {
   fall.raf = requestAnimationFrame(fallLoop);
   const c = fall.ctx;
   if (!c) return;
-  if (Math.abs(fall.canvas.getBoundingClientRect().width - fall.w) > 1) fallResize();
+  const cr = fall.canvas.getBoundingClientRect();
+  if (Math.abs(cr.width - fall.w) > 1 || Math.abs(cr.height - fall.h) > 1) fallResize();
 
   const W = fall.w, H = fall.h;
   const keyH = FALL_KEY_H;
@@ -2428,6 +2477,10 @@ function bindUi() {
   $('fallPlay').addEventListener('click', () => { fallTogglePlay(); blurAll(); });
   $('fallStop').addEventListener('click', () => { fallReset(); blurAll(); });
   bindFallDrag($('fallCanvas'));
+  $('adModalClose').addEventListener('click', () => { closeAdModal(); blurAll(); });
+  $('adModal').addEventListener('click', e => {   // 背景を押しても閉じる
+    if (e.target === document.getElementById('adModal')) closeAdModal();
+  });
   $('fallMetro').addEventListener('click', () => { setMetro(!metroOn); syncFallButtons(); blurAll(); });
   $('fallSilent').addEventListener('click', () => { setSilent(!silent); syncFallButtons(); blurAll(); });
   $('fallTempo').addEventListener('change', e => {

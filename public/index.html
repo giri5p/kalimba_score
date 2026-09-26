@@ -134,6 +134,22 @@
   .fallbar input[type=number]{width:68px;background:#1d2637;border-color:#33405a;
                               color:#dfe6f2;font-size:15px}
   .fallbar input[type=range]{width:110px}
+  /* 練習画面を開いたときに一度だけ出す広告モーダル。
+     ・広告の上には何も重ねない
+     ・閉じるボタンは広告から離し、大きめにする（誤クリックを誘わないため）
+     ・「閉じないと進めない」のは閉じるボタンであって、広告ではない */
+  .admodal{position:fixed;inset:0;z-index:70;background:rgba(8,12,20,.78);
+           display:flex;align-items:center;justify-content:center;padding:16px}
+  .admodal[hidden]{display:none}
+  .admodal .box{background:#151c2b;border:1px solid #2b3446;border-radius:10px;
+                padding:16px;max-width:100%;display:flex;flex-direction:column;align-items:center}
+  .admodal .cap{color:#7d8ba3;font-size:11px;margin:0 0 8px;align-self:flex-start}
+  .admodal .slot{overflow:hidden}
+  .admodal .slot iframe{border:0;display:block}
+  .admodal .foot{margin-top:24px}         /* 広告と閉じるボタンの間隔 */
+  .admodal .foot button{min-width:220px;min-height:46px;font-size:15px;
+                        background:var(--accent);border-color:var(--accent);color:#fff}
+  .admodal .foot button:hover{filter:brightness(1.07)}
   /* 上下ドラッグで再生位置を動かせるので、ブラウザのスクロールは切っておく */
   #fallCanvas{flex:1;width:100%;display:block;min-height:0;touch-action:none;cursor:grab}
   #fallCanvas.drag{cursor:grabbing}
@@ -205,7 +221,7 @@
     #sheet{box-shadow:none;max-width:none;padding:0}
     #score svg{width:100%!important;height:auto!important}
     #score .cursor,#score .seek{display:none}
-    .sitefoot,.adbox{display:none}
+    .sitefoot,.adbox,.admodal{display:none}
   }
   @page{size:A4 portrait;margin:12mm}
 </style>
@@ -308,7 +324,20 @@ function writeAdmaxTag(tags) {
     <span class="f" id="fallInfo"></span>
     <span class="f fallhint">画面を上下にドラッグすると再生位置を動かせます</span>
   </div>
-  <canvas id="fallCanvas" title="上下にドラッグすると再生位置が動きます"></canvas>
+    <canvas id="fallCanvas" title="上下にドラッグすると再生位置が動きます"></canvas>
+</div>
+
+<!-- 練習画面を開いたときに一度だけ出す広告モーダル。
+     中身は app.js の showAdModal() が ad-frame.html を iframe で読み込みます。
+     練習画面を開かない人には広告を読み込みません。 -->
+<div class="admodal" id="adModal" hidden>
+  <div class="box">
+    <p class="cap">広告</p>
+    <div class="slot" id="adModalSlot"></div>
+    <div class="foot">
+      <button id="adModalClose">✕ 閉じて練習をはじめる</button>
+    </div>
+  </div>
 </div>
 
 <!-- 使い方チュートリアル -->

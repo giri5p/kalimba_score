@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>広告</title>
+<style>
+  html,body{margin:0;padding:0;overflow:hidden;background:#151c2b}
+  body{height:100vh;display:flex;justify-content:center;align-items:center}
+</style>
+</head>
+<body>
+<!-- 練習画面（/practice）の広告モーダルの中に、iframe で読み込まれるページです。
+
+     忍者AD MAX のタグは document.write を使うため、ページを読み終わったあとに
+     JavaScript で差し込むことができません。かといって練習画面の HTML に
+     直接書くと、練習画面を開かない人にも広告が読み込まれてしまいます。
+     そこで広告だけのこのページを用意して、練習画面を開いたときに
+     iframe で読み込んでいます。
+
+     どのタグを出すかは ?s= で受け取ります（sp / pc / narrow）。
+     この iframe は広告ぴったりの大きさなので、ここで画面幅を測っても
+     本当の画面の広さは分かりません。そのため app.js の showAdModal() が
+     判断して渡しています。大きさを変えるときは、あちらの数字も合わせてください。
+
+     ?s= が無いときだけ、このページ自身で判断します（単体で開いたとき用）。
+     スマホ用タグは、端末がスマホでないと中身が空で返ってきます。 -->
+<!-- admax -->
+<script>
+(function () {
+  /* 受け取った文字列はそのまま使わず、この表から引く */
+  var TAGS = {
+    sp:     '8e129ef782a16e8c0519fc795b04c934',   /* スマホ  320x100 */
+    pc:     '08707ed5e02c0a1f8337135fc620ce06',   /* PC      728x90  */
+    narrow: 'a237c8675187df64785358c0a23f6612'    /* PC 狭幅 300x250 */
+  };
+  var m = location.search.match(/[?&]s=([a-z]+)/);
+  var kind = m && m[1];
+  if (!kind) {
+    var sp   = /Android|iPhone|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent);
+    var wide = window.matchMedia('(min-width: 820px)').matches;
+    kind = sp ? 'sp' : (wide ? 'pc' : 'narrow');
+  }
+  var tag = TAGS[kind];
+  if (!tag) return;
+  document.write('<scr' + 'ipt src="https://adm.shinobi.jp/s/' + tag + '"><' + '/scr' + 'ipt>');
+})();
+</script>
+<!-- admax -->
+</body>
+</html>
