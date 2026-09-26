@@ -2059,10 +2059,11 @@ function fallLoop() {
   const lead = fallLead();
   const pps = judgeY / lead;             // 1 秒あたり何 px 落ちるか
   const n = fall.order.length;
-  const pad = Math.max(6, Math.min(18, W * 0.014));   // 本体の左右の余白
-  const botPad = 12;                                  // 本体の下の余白
-  const bodyX = pad, bodyW = W - pad * 2;
+  const botPad = 12;                                       // 本体の下の余白
+  const bodyW = Math.min(W - 16, n * 36);                  // 実物に近い幅で頭打ちにする
+  const bodyX = (W - bodyW) / 2;                           // 残りが左右の余白になる
   const laneW = bodyW / n;
+  const tineW = Math.max(7, Math.min(laneW - 6, 28));      // キー1本の幅
 
   /* いまの時刻。停止中は曲の先頭で止めて、これから弾く音が見えるようにする */
   let now = 0;
@@ -2098,15 +2099,15 @@ function fallLoop() {
     const y = judgeY - dy;
     nt.lanes.forEach((ln, k) => {
       if (ln < 0) return;
-      const x = bodyX + ln * laneW + 3;
-      const w = laneW - 6;
+      const w = tineW;
+      const x = bodyX + ln * laneW + (laneW - w) / 2;
       c.fillStyle = laneColor(nt.steps[k]);
       roundRect(c, x, y - hgt, w, hgt, Math.min(7, w / 2));
       c.fill();
       c.fillStyle = 'rgba(255,255,255,.9)';          // 弾く瞬間の側を明るく
       roundRect(c, x, y - 4, w, 4, 2);
       c.fill();
-      if (hgt > 18 && laneW > 22) {
+      if (hgt > 18 && w >= 16) {
         c.fillStyle = '#fff';
         c.font = '600 12px ' + FONT_JP;
         c.textAlign = 'center';
@@ -2133,7 +2134,7 @@ function fallLoop() {
   for (let i = 0; i < n; i++) {
     const step = fall.order[i];
     const len = tineMax - Math.abs(i - mid) * tineStep;   // 中央ほど長い
-    const w = Math.max(6, laneW - 5);
+    const w = tineW;
     const x = bodyX + i * laneW + (laneW - w) / 2;
     const glow = fall.hit[i] > 0;
 
@@ -2154,12 +2155,12 @@ function fallLoop() {
     c.fill();
 
     /* 番号と階名はキーの上のほう（短いキーにも収まる位置）に書く */
-    if (laneW > 16) {
+    if (w >= 15) {
       c.textAlign = 'center';
       c.fillStyle = '#23303f';
       c.font = '700 13px ' + FONT_JP;
       c.fillText(numberOf(step), x + w / 2, judgeY + 22);
-      if (laneW > 26) {
+      if (w >= 24) {
         c.fillStyle = '#5c6a7e';
         c.font = '11px ' + FONT_JP;
         c.fillText(solfegeOf(step), x + w / 2, judgeY + 38);
