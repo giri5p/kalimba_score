@@ -1,0 +1,15 @@
+{
+  // Cloudflare Workers（静的アセット配信）の設定。
+  // Workers Builds が main への push を受けて `npx wrangler deploy` を実行し、
+  // このファイルを読んでデプロイします。
+  //
+  // name は Cloudflare 上の Worker 名と同じにしてください（違うと別 Worker が作られます）。
+  "name": "kalimba-score",
+  "compatibility_date": "2026-09-26",
+
+  // 公開するのは public/ の中だけです。
+  // README.md や server.js、.git などは配信されません。
+  "assets": {
+    "directory": "./public"
+  }
+}

@@ -5,16 +5,18 @@
 
 ## 使い方
 
-`index.html` をダブルクリックしてブラウザで開くだけです。
+`public/index.html` をダブルクリックしてブラウザで開くだけです。
 
 ```
 kalimba/
-├── index.html                  ← これを開く
-├── app.js
-├── about.html                  ← このサイトについて（作った経緯・できること）
-├── _headers                    ← Cloudflare Pages 用の配信設定
-├── start.cmd / server.js       ← ローカルでマイクを使うとき（下記）
-└── vendor/vexflow-bravura.js   ← 楽譜描画ライブラリ（同梱・オフラインで動作）
+├── public/                     ← 公開されるのはこのフォルダの中だけ
+│   ├── index.html              ← これを開く
+│   ├── app.js
+│   ├── about.html              ← このサイトについて（作った経緯・できること）
+│   ├── _headers                ← 配信時のキャッシュ設定
+│   └── vendor/vexflow-bravura.js  ← 楽譜描画ライブラリ（同梱・オフラインで動作）
+├── wrangler.jsonc              ← Cloudflare へのデプロイ設定
+└── start.cmd / server.js       ← ローカルでマイクを使うとき（下記）
 ```
 
 ## このサイトについて（about.html）
