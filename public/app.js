@@ -1643,7 +1643,7 @@ function decodeScore(str) {
 }
 
 function shareUrl() {
-  return location.origin + location.pathname + '#s=' + encodeScore();
+  return location.origin + scorePath() + '#s=' + encodeScore();
 }
 
 /* ---------- 曲パネル ---------- */
@@ -2000,6 +2000,29 @@ const fallPps = () => Math.max(1, fall.h - FALL_KEY_H) / fallLead();
 
 const fallLead = () => 6 - fall.speed * 0.5;      // 何秒先まで見えるか
 
+/* 練習画面は /practice という別の URL にしておく。
+   こうしておくと、リロードしても練習画面のまま開けるし、
+   ブラウザの「戻る」でも楽譜ページにもどれる。
+   file:// で開いているときは履歴を書き換えられないので、そのときは何もしない */
+const FALL_SEG = 'practice';
+
+function dirPath() {                    // いま開いているページのあるフォルダ
+  const p = location.pathname;
+  return p.slice(0, p.lastIndexOf('/') + 1);
+}
+function fallPath()  { return dirPath() + FALL_SEG; }
+function isFallPath(){ return location.pathname === fallPath(); }
+/* 楽譜ページ側のパス（共有リンクなどはこちらを使う） */
+function scorePath() { return isFallPath() ? dirPath() : location.pathname; }
+
+function goPath(path, state, replace) {
+  const url = path + location.search + location.hash;
+  try {
+    if (replace) history.replaceState(state || null, "", url);
+    else history.pushState(state || null, "", url);
+  } catch (e) { /* file:// などでは URL を変えられない */ }
+}
+
 /* 秒を 0:00 の形にする */
 function mmss(sec) {
   const t = Math.max(0, Math.round(sec));
@@ -2012,9 +2035,11 @@ function fallLanes() {
   return tineOrder(p.count).map(k => p.base + k);
 }
 
-function openFall() {
+/* back は「ブラウザの戻る／進むで来た」ときに true。そのときは URL をいじらない */
+function openFall(back) {
   const box = document.getElementById('fall');
   if (!box) return;
+  if (!back) goPath(fallPath(), { fall: 1 });
   box.hidden = false;
   fall.on = true;
   fall.canvas = document.getElementById('fallCanvas');
@@ -2032,13 +2057,22 @@ function openFall() {
   fallLoop();
 }
 
-function closeFall() {
+function closeFall(back) {
   fall.on = false;
   cancelAnimationFrame(fall.raf);
   stop();
   const box = document.getElementById('fall');
   if (box) box.hidden = true;
+  if (back) return;
+  if (history.state && history.state.fall) history.back();   // 履歴を増やさない
+  else goPath(scorePath(), null, true);
 }
+
+/* ブラウザの戻る／進むに合わせて開け閉めする */
+window.addEventListener('popstate', () => {
+  if (isFallPath() && !fall.on) openFall(true);
+  else if (!isFallPath() && fall.on) closeFall(true);
+});
 
 /* 楽譜から「弾く音」だけを取り出す（タイで伸びている音は弾き直さない） */
 function buildFallNotes() {
@@ -2505,13 +2539,15 @@ function boot() {
   } catch (e) {}
   let firstTime = true;
   try { firstTime = localStorage.getItem(TUT_KEY) !== '1'; } catch (e) {}
-  if (firstTime) setTimeout(() => openTutorial(0), 350);   // 描画が落ち着いてから
+  /* 練習画面の URL で来た人には、使い方モーダルを重ねない */
+  if (firstTime && !isFallPath()) setTimeout(() => openTutorial(0), 350);
   if (!state.notes.length) state.notes = [newNote(clampStep(0), 'q', false, true)];
   syncInputs();
   buildDurPalette();
   buildTines();
   refresh();
   booted = true;
+  if (isFallPath()) openFall(true);       // /practice で来たらそのまま練習画面
 }
 
 function start() {
