@@ -50,6 +50,9 @@
   #pagecol{width:100%;max-width:1100px}
   #sheet{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.14);border-radius:4px;
          padding:18px 10px 10px;width:100%}
+  /* 広告枠。タグを貼るまでは高さ 0 で、レイアウトに影響しない */
+  .adbox{text-align:center;overflow:hidden}
+  .adbox:not(:empty){margin:16px 0 4px}
   .sitefoot{text-align:center;padding:12px 0 2px;font-size:12px}
   .sitefoot a{color:var(--muted)}
   .sitefoot a:hover{color:var(--accent)}
@@ -180,7 +183,7 @@
     #sheet{box-shadow:none;max-width:none;padding:0}
     #score svg{width:100%!important;height:auto!important}
     #score .cursor,#score .seek{display:none}
-    .sitefoot{display:none}
+    .sitefoot,.adbox{display:none}
   }
   @page{size:A4 portrait;margin:12mm}
 </style>
@@ -303,6 +306,40 @@
       <div id="sheetMeta"></div>
       <div id="score"></div>
     </div>
+
+    <!-- ▼▼▼ 広告枠（忍者AD MAX） ▼▼▼
+         忍者AD MAX で発行された広告タグを、下の id="ad" の div の中にそのまま貼り付けてください。
+         貼ったあとの形（例）:
+           [div id="ad" class="adbox"]
+             [script src="https://adm.shinobi.jp/s/xxxxxxxxxxxx"][/script]
+           [/div]
+         ・タグを貼るまでは高さ 0 で、何も表示されず場所も取りません
+         ・忍者AD MAX のタグは document.write を使うことがあるため、JavaScript で
+           あとから差し込まず、このように HTML に直接書いてください
+         ・枠を増やしたいときは、この div ごとコピーして id を ad2, ad3 … に
+         ・印刷と PNG 書き出しには入りません                        ▼▼▼ -->
+    <div id="ad" class="adbox">
+      <!-- admax -->
+      <script>
+      /* 忍者AD MAX のタグは document.write を使うので、読み込み後には差し込めない。
+         そのためページを読んでいるこの位置で、条件に合う1つだけを書き出している。
+         （2つ貼って CSS で隠すと、見えない広告まで読み込まれてしまう）
+
+         スマホ用タグ(SP)は端末がスマホでないと中身が空で返るため、
+         画面の広さだけでなく端末の種類も見て選ぶ。 */
+      (function () {
+        var sp   = /Android|iPhone|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent);
+        var wide = window.matchMedia('(min-width: 820px)').matches;
+        var tag = sp   ? '30e16568e9eed3a68c1e55b79f460992'   /* スマホ用       */
+                : wide ? '08707ed5e02c0a1f8337135fc620ce06'   /* PC 728x90      */
+                       : 'a237c8675187df64785358c0a23f6612';  /* PC 狭幅 300x250 */
+        document.write('<scr' + 'ipt src="https://adm.shinobi.jp/s/' + tag + '"><' + '/scr' + 'ipt>');
+      })();
+      </script>
+      <!-- admax -->
+    </div>
+    <!-- ▲▲▲ 広告枠ここまで ▲▲▲ -->
+
     <div class="sitefoot">
       <a href="about.html">このサイトについて</a>
     </div>
