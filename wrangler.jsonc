@@ -10,10 +10,6 @@
   // 公開するのは public/ の中だけです。
   // README.md や server.js、.git などは配信されません。
   "assets": {
-    "directory": "./public",
-
-    // 練習画面は /practice という URL にしています。
-    // 実体のないパスなので、見つからないときは index.html を返させます。
-    "not_found_handling": "single-page-application"
+    "directory": "./public"
   }
 }

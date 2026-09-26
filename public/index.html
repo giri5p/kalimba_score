@@ -52,8 +52,7 @@
          padding:18px 10px 10px;width:100%}
   /* 広告枠。タグを貼るまでは高さ 0 で、レイアウトに影響しない */
   .adbox{text-align:center;overflow:hidden}
-  .adbox:not(:empty){margin:16px 0}
-  #ad:not(:empty){margin:0 0 16px}      /* 楽譜の上の枠は、上の余白はいらない */
+  .adbox:not(:empty){margin:16px 0 4px}
   .sitefoot{text-align:center;padding:12px 0 2px;font-size:12px}
   .sitefoot a{color:var(--muted)}
   .sitefoot a:hover{color:var(--accent)}
@@ -118,27 +117,6 @@
   .list .row .sub{font-size:11px;color:var(--muted);flex:none}
   .list .empty{padding:14px;text-align:center;color:var(--muted);font-size:12.5px}
   .note{font-size:11.5px;color:var(--muted);line-height:1.7;margin:0}
-
-  /* ---------- ノーツ練習画面 ---------- */
-  .fall{position:fixed;inset:0;z-index:60;background:#0f1420;display:flex;flex-direction:column}
-  .fall[hidden]{display:none}
-  .fallbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:none;
-           padding:8px 12px;background:#18203050;border-bottom:1px solid #2b3446;
-           font-size:15px}
-  .fallbar button{background:#1d2637;border-color:#33405a;color:#dfe6f2;
-                  font-size:15px;padding:7px 13px}
-  .fallbar button:hover{background:#26324a}
-  .fallbar button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
-  .fallbar button.on{background:#2a3c5e;border-color:var(--accent);color:#9ec3ff}
-  .fallbar .f{color:#8d9bb3;font-size:14px}
-  .fallbar input[type=number]{width:68px;background:#1d2637;border-color:#33405a;
-                              color:#dfe6f2;font-size:15px}
-  .fallbar input[type=range]{width:110px}
-  /* 上下ドラッグで再生位置を動かせるので、ブラウザのスクロールは切っておく */
-  #fallCanvas{flex:1;width:100%;display:block;min-height:0;touch-action:none;cursor:grab}
-  #fallCanvas.drag{cursor:grabbing}
-  .fallhint{color:#6d7b93}
-  @media (max-width:760px){.fallhint{display:none}}
 
   /* ---------- チュートリアル ---------- */
   .box.tut{width:min(600px,100%)}
@@ -209,24 +187,6 @@
   }
   @page{size:A4 portrait;margin:12mm}
 </style>
-
-<script>
-/* 広告（忍者AD MAX）を枠に書き出す。
-   タグが document.write を使うので、あとから JavaScript で差し込むことはできない。
-   枠の位置でこの関数を呼び、その場でタグを読み込ませる。
-
-   1つの枠につきタグは1つだけ選ぶ。複数貼って CSS で隠すと、
-   見えない広告まで読み込まれてしまうため。
-
-   スマホ用タグは、端末がスマホでないと中身が空で返ってくる。
-   そのため画面の広さだけでなく、端末の種類も見て選んでいる。 */
-function writeAdmaxTag(tags) {
-  var sp   = /Android|iPhone|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent);
-  var wide = window.matchMedia('(min-width: 820px)').matches;
-  var tag  = sp ? tags.sp : (wide ? tags.pc : tags.pcNarrow);
-  document.write('<scr' + 'ipt src="https://adm.shinobi.jp/s/' + tag + '"><' + '/scr' + 'ipt>');
-}
-</script>
 </head>
 <body>
 
@@ -286,29 +246,10 @@ function writeAdmaxTag(tags) {
     <button id="btnMetro" title="メトロノーム">🔔<span class="lbl"> 拍</span></button>
     <button id="btnSilent" title="音を出さずに譜面の進行だけ表示します（自分で弾くときの練習用）">🔇<span class="lbl"> 無音</span></button>
     <button id="btnMic" class="editOnly" title="マイクで弾いた音を楽譜にします">🎤 マイク</button>
-    <button id="btnFall" title="楽譜どおりにノーツが降ってくる練習画面">🎵<span class="lbl"> 練習</span></button>
     <button id="btnSongs" title="曲の保存・読み込み・共有">📁<span class="lbl"> 曲・保存</span></button>
     <button id="btnHelp" title="使い方を見る">❓<span class="lbl"> 使い方</span></button>
     <input type="file" id="file" accept=".json,application/json" hidden>
   </div>
-</div>
-
-<!-- ノーツ練習画面 -->
-<div class="fall" id="fall" hidden>
-  <div class="fallbar">
-    <button id="fallClose">✕<span class="lbl"> 閉じる</span></button>
-    <button class="pri" id="fallPlay">▶ 開始</button>
-    <button id="fallStop" title="最初に戻す">■</button>
-    <label class="f" for="fallTempo">テンポ</label>
-    <input type="number" id="fallTempo" min="30" max="240">
-    <label class="f" for="fallSpeed">速さ</label>
-    <input type="range" id="fallSpeed" min="1" max="10" step="1">
-    <button id="fallMetro" title="メトロノーム">🔔</button>
-    <button id="fallSilent" title="音を出さない">🔇</button>
-    <span class="f" id="fallInfo"></span>
-    <span class="f fallhint">画面を上下にドラッグすると再生位置を動かせます</span>
-  </div>
-  <canvas id="fallCanvas" title="上下にドラッグすると再生位置が動きます"></canvas>
 </div>
 
 <!-- 使い方チュートリアル -->
@@ -360,45 +301,44 @@ function writeAdmaxTag(tags) {
 
 <div id="paper">
   <div id="pagecol">
-    <!-- ▼▼▼ 広告枠 1（楽譜の上・忍者AD MAX） ▼▼▼
-         枠は 2 つあります。こちらは楽譜の上（開いてすぐ目に入る場所）。
-         もう 1 つは楽譜の下、「このサイトについて」リンクの上にあります。
-
-         タグを差し替えるときは、下の writeAdmaxTag(...) の中の ID だけを
-         忍者AD MAX で発行されたものに書き換えてください。
-         ・上の枠は、縦に場所を取りすぎないサイズのタグにしています
-         ・タグを貼るまでは高さ 0 で、何も表示されず場所も取りません
-         ・印刷と PNG 書き出しには入りません                        ▼▼▼ -->
-    <div id="ad" class="adbox">
-      <!-- admax -->
-      <script>writeAdmaxTag({
-        sp:       '8e129ef782a16e8c0519fc795b04c934',   /* スマホ  320x100 */
-        pc:       '08707ed5e02c0a1f8337135fc620ce06',   /* PC      728x90  */
-        pcNarrow: 'a237c8675187df64785358c0a23f6612'    /* PC 狭幅 300x250 */
-      });</script>
-      <!-- admax -->
-    </div>
-    <!-- ▲▲▲ 広告枠 1 ここまで ▲▲▲ -->
-
     <div id="sheet">
       <div id="sheetTitle"></div>
       <div id="sheetMeta"></div>
       <div id="score"></div>
     </div>
 
-    <!-- ▼▼▼ 広告枠 2（楽譜の下・忍者AD MAX） ▼▼▼
-         下まで読んでくれた人向けの枠。ここは縦に場所を取っても困らないので、
-         スマホでは大きめ（300x250）のタグを使っています。            ▼▼▼ -->
-    <div id="ad2" class="adbox">
+    <!-- ▼▼▼ 広告枠（忍者AD MAX） ▼▼▼
+         忍者AD MAX で発行された広告タグを、下の id="ad" の div の中にそのまま貼り付けてください。
+         貼ったあとの形（例）:
+           [div id="ad" class="adbox"]
+             [script src="https://adm.shinobi.jp/s/xxxxxxxxxxxx"][/script]
+           [/div]
+         ・タグを貼るまでは高さ 0 で、何も表示されず場所も取りません
+         ・忍者AD MAX のタグは document.write を使うことがあるため、JavaScript で
+           あとから差し込まず、このように HTML に直接書いてください
+         ・枠を増やしたいときは、この div ごとコピーして id を ad2, ad3 … に
+         ・印刷と PNG 書き出しには入りません                        ▼▼▼ -->
+    <div id="ad" class="adbox">
       <!-- admax -->
-      <script>writeAdmaxTag({
-        sp:       '30e16568e9eed3a68c1e55b79f460992',   /* スマホ  300x250 */
-        pc:       '08707ed5e02c0a1f8337135fc620ce06',   /* PC      728x90  */
-        pcNarrow: 'a237c8675187df64785358c0a23f6612'    /* PC 狭幅 300x250 */
-      });</script>
+      <script>
+      /* 忍者AD MAX のタグは document.write を使うので、読み込み後には差し込めない。
+         そのためページを読んでいるこの位置で、条件に合う1つだけを書き出している。
+         （2つ貼って CSS で隠すと、見えない広告まで読み込まれてしまう）
+
+         スマホ用タグ(SP)は端末がスマホでないと中身が空で返るため、
+         画面の広さだけでなく端末の種類も見て選ぶ。 */
+      (function () {
+        var sp   = /Android|iPhone|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent);
+        var wide = window.matchMedia('(min-width: 820px)').matches;
+        var tag = sp   ? '30e16568e9eed3a68c1e55b79f460992'   /* スマホ用       */
+                : wide ? '08707ed5e02c0a1f8337135fc620ce06'   /* PC 728x90      */
+                       : 'a237c8675187df64785358c0a23f6612';  /* PC 狭幅 300x250 */
+        document.write('<scr' + 'ipt src="https://adm.shinobi.jp/s/' + tag + '"><' + '/scr' + 'ipt>');
+      })();
+      </script>
       <!-- admax -->
     </div>
-    <!-- ▲▲▲ 広告枠 2 ここまで ▲▲▲ -->
+    <!-- ▲▲▲ 広告枠ここまで ▲▲▲ -->
 
     <div class="sitefoot">
       <a href="about.html">このサイトについて</a>
