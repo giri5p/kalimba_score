@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>このサイトについて｜カリンバ楽譜メーカー</title>
+<meta name="description" content="カリンバ用に、ドレミ・数字譜・音名を並べた楽譜を作れる無料のページです。作った理由や、できること・できないことを書いています。">
+<style>
+  :root{ --bg:#eceef2; --ink:#1c2024; --muted:#6b7280; --line:#d7dae0; --accent:#2f6fed; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.9 "Yu Gothic UI","Meiryo","Hiragino Kaku Gothic ProN",system-ui,sans-serif;}
+  .wrap{max-width:720px;margin:0 auto;padding:28px 18px 60px}
+  .card{background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.12);
+        padding:28px 30px 32px}
+  h1{font-size:23px;margin:0 0 4px;line-height:1.5}
+  .lead{color:var(--muted);font-size:13.5px;margin:0 0 24px}
+  h2{font-size:17px;margin:30px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h2:first-of-type{margin-top:22px}
+  p{margin:0 0 14px}
+  ul{margin:0 0 14px;padding-left:1.3em}
+  li{margin-bottom:7px}
+  .quote{background:#f7f8fa;border-left:3px solid var(--accent);
+         padding:14px 16px;border-radius:0 8px 8px 0;margin:0 0 16px}
+  .quote p:last-child{margin-bottom:0}
+  .fig{background:#f7f8fa;border:1px solid var(--line);border-radius:8px;
+       padding:14px;margin:0 0 16px;text-align:center}
+  a{color:var(--accent)}
+  .cta{display:inline-block;background:var(--accent);color:#fff;text-decoration:none;
+       padding:11px 22px;border-radius:8px;font-weight:600;margin-top:6px}
+  .cta:hover{filter:brightness(1.08)}
+  .foot{text-align:center;margin-top:22px;font-size:12.5px;color:var(--muted)}
+  table{border-collapse:collapse;width:100%;margin:0 0 14px;font-size:14px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left}
+  th{background:#f7f8fa;font-weight:600;width:34%}
+  @media (max-width:620px){
+    .wrap{padding:14px 10px 40px}
+    .card{padding:20px 16px 24px;border-radius:8px}
+    h1{font-size:20px}
+    th{width:40%}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+
+    <h1>このサイトについて</h1>
+    <p class="lead">カリンバ楽譜メーカー ― ドレミつきの楽譜を作るページ</p>
+
+    <h2>どんなサイトか</h2>
+    <p>
+      カリンバ（親指ピアノ）で弾くための楽譜を作れるページです。
+      五線譜の下に <b>ドレミ</b>・<b>カリンバの数字（1 2 3 …）</b>・<b>音名（C D E …）</b>の
+      3 つを並べて書き出します。
+    </p>
+    <div class="fig">
+      <svg width="300" height="132" viewBox="0 0 300 132" role="img"
+           aria-label="音符の下にドレミ・数字・音名が3段で並ぶ例">
+        <g stroke="#1c2024" stroke-width="1">
+          <line x1="20" y1="14" x2="280" y2="14"/><line x1="20" y1="24" x2="280" y2="24"/>
+          <line x1="20" y1="34" x2="280" y2="34"/><line x1="20" y1="44" x2="280" y2="44"/>
+          <line x1="20" y1="54" x2="280" y2="54"/>
+        </g>
+        <ellipse cx="96" cy="54" rx="6" ry="4.4" transform="rotate(-20 96 54)" fill="#1c2024"/>
+        <path d="M101.6 53.4 V22" stroke="#1c2024" stroke-width="1.6"/>
+        <ellipse cx="186" cy="39" rx="6" ry="4.4" transform="rotate(-20 186 39)" fill="#1c2024"/>
+        <path d="M191.6 38.4 V7" stroke="#1c2024" stroke-width="1.6"/>
+        <g font-family="sans-serif" text-anchor="middle">
+          <text x="96" y="78" font-size="13">ド</text>
+          <text x="96" y="98" font-size="13" font-weight="600">1</text>
+          <text x="96" y="116" font-size="11" fill="#8a919b">C</text>
+          <text x="186" y="78" font-size="13">ソ</text>
+          <text x="186" y="98" font-size="13" font-weight="600">5</text>
+          <text x="186" y="116" font-size="11" fill="#8a919b">G</text>
+          <text x="252" y="78" font-size="10.5" fill="#6b7280" text-anchor="start">← ドレミ</text>
+          <text x="252" y="98" font-size="10.5" fill="#6b7280" text-anchor="start">← 数字譜</text>
+          <text x="252" y="116" font-size="10.5" fill="#6b7280" text-anchor="start">← 音名</text>
+        </g>
+      </svg>
+    </div>
+    <p>
+      作った楽譜は印刷したり、画像として保存したり、リンクにしてスマホで開いたりできます。
+      登録もインストールも要りません。
+    </p>
+
+    <h2>作った理由</h2>
+    <div class="quote">
+      <p>
+        このサイトを作りはじめた時点で、<b>カリンバを始めて 6 日目</b>でした。
+        それまでの音楽経験といえば、学校の授業でリコーダーを吹いたくらいです。
+      </p>
+      <p>
+        楽譜がまともに読めないので、<b>音符の下にドレミが書いてある楽譜</b>がほしい。
+        でもカリンバのキーにはドレミが書かれていないので、
+        <b>1 2 3 の数字や C D E の音名も一緒に並んでいてほしい</b>。
+      </p>
+      <p>
+        そういう楽譜を作れるサイトを探したのですが、見つけられませんでした。
+        ないなら作ってみるか、というのがこのサイトです。
+      </p>
+    </div>
+    <p>
+      つまり、<b>楽譜が読めない初心者が、自分のために作ったもの</b>です。
+      同じように「カリンバを買ったけれど楽譜が読めない」という人の役に立てば嬉しいです。
+    </p>
+
+    <h2>できること</h2>
+    <ul>
+      <li>音符を置いて、ドレミ・数字譜・音名つきの楽譜を作る（表示する段は選べます）</li>
+      <li>音の長さ、休符、付点、タイ、和音</li>
+      <li>叩いた間隔でリズムを決める入力、マイクで拾った音から楽譜にする下書き機能</li>
+      <li>作った曲の再生、メトロノーム、音を出さずに譜面だけ進む練習モード</li>
+      <li>ブラウザへの保存、リンクでの共有、PNG 画像の書き出し、印刷</li>
+    </ul>
+
+    <h2>できないこと</h2>
+    <p>市販の楽譜作成ソフトのようなことはできません。</p>
+    <ul>
+      <li><b>半音（♯ ♭）は使えません。</b>カリンバに半音のキーがないためで、ハ長調（白鍵）の音だけです</li>
+      <li>調号・転調・3 連符・声部の分かれた譜・歌詞・強弱記号・繰り返し記号などはありません</li>
+      <li>テンポと拍子は曲の途中で変えられません</li>
+      <li>和音は「同時に鳴らす音」として扱うだけで、パート分けはできません</li>
+      <li>スマホなど画面の狭い端末では<b>見る専用</b>です。作るのはパソコンを想定しています</li>
+    </ul>
+
+    <h2>データの扱い</h2>
+    <table>
+      <tr><th>作った曲</th><td>お使いの端末のブラウザの中だけに保存されます。こちらのサーバーには送っていません</td></tr>
+      <tr><th>共有リンク</th><td>曲の内容を URL そのものに埋め込む方式です。どこかに保存されるわけではありません</td></tr>
+      <tr><th>マイク入力</th><td>音の解析はブラウザの中だけで行います。録音データが送信されることはありません</td></tr>
+    </table>
+    <p>
+      ブラウザのデータを消すと、保存した曲も消えます。残しておきたい曲は
+      「🔗 リンクをコピー」か「JSONで書き出し」で手元に控えておいてください。
+    </p>
+
+    <h2>お願い・ご注意</h2>
+    <ul>
+      <li>音楽の知識がない人間が作ったものなので、楽譜として正しくない表記が出ることがあります</li>
+      <li>市販の曲を採譜したデータを公開・配布する場合は、著作権にご注意ください</li>
+      <li>不具合や「こうだったら使いやすい」があれば教えていただけると助かります</li>
+    </ul>
+
+    <!-- 連絡先（X のアカウントやメールなど）を載せたい場合は、この下に書いてください。
+         例: <p>ご連絡は <a href="https://x.com/xxxx">@xxxx</a> まで。</p> -->
+
+    <p style="text-align:center;margin-top:28px">
+      <a class="cta" href="./">楽譜を作ってみる →</a>
+    </p>
+
+  </div>
+  <p class="foot">カリンバ楽譜メーカー</p>
+</div>
+</body>
+</html>
