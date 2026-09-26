@@ -1045,14 +1045,22 @@ function buildEvents() {
   return { evs: evs, total: t };
 }
 
-function play(startAt, leadIn) {
+/* startAt は「何番目の音符から」。fromTime を渡すと「曲の何秒目から」になり、
+   画面の時計もその秒数から進む（練習画面の一時停止・シークで使う） */
+function play(startAt, leadIn, fromTime) {
   if (mic.on) micStop();
   stop();
   const c = ac();
   const r = buildEvents();
   const t0 = c.currentTime + 0.12 + (leadIn || 0);
-  const from = r.evs.findIndex(e => e.i >= startAt);
-  const list = from > 0 ? r.evs.slice(from) : r.evs.slice();
+  let list;
+  if (fromTime != null) {
+    const i0 = r.evs.findIndex(e => e.t >= fromTime - 1e-6);
+    list = i0 < 0 ? [] : r.evs.slice(i0);
+  } else {
+    const from = r.evs.findIndex(e => e.i >= startAt);
+    list = from > 0 ? r.evs.slice(from) : r.evs.slice();
+  }
   if (!list.length) return;
   /* タイの途中から鳴らすときは、伸びてきている音をここで鳴らし直す */
   if (!list[0].rest && !list[0].p.length) {
@@ -1062,7 +1070,7 @@ function play(startAt, leadIn) {
       p: n.p.slice(), durs: n.p.map(p => tiedLength(list[0].i, p, spq))
     });
   }
-  const offset = list[0].t;
+  const offset = fromTime != null ? fromTime : list[0].t;
   playing = true;
   anchorLine = -1;              // 再生を始める段を必ず上端に出す
   bus = c.createGain();
@@ -1974,10 +1982,25 @@ const fall = {
   notes: [],          // {t, dur, lanes:[..], steps:[..]}
   order: [],          // 画面左から右へ並べたキーの step
   speed: 4,           // 1〜10。大きいほど速く落ちる
-  hit: []             // レーンごとの「光らせる残り時間」
+  hit: [],            // レーンごとの「光らせる残り時間」
+  pos: 0,             // いま見ている位置（曲の先頭からの秒数）
+  total: 0,           // 曲全体の長さ（秒）
+  paused: false,      // 一時停止して位置を保っている
+  wasPlaying: false,  // 前のフレームで鳴っていたか
+  drag: null          // ドラッグ中の情報
 };
 
+const FALL_KEY_H = 132;                          // 下のカリンバ本体の高さ
+/* 1 秒あたり何 px 落ちるか。ドラッグの移動量を秒に直すのにも使う */
+const fallPps = () => Math.max(1, fall.h - FALL_KEY_H) / fallLead();
+
 const fallLead = () => 6 - fall.speed * 0.5;      // 何秒先まで見えるか
+
+/* 秒を 0:00 の形にする */
+function mmss(sec) {
+  const t = Math.max(0, Math.round(sec));
+  return (t / 60 | 0) + ':' + String(t % 60).padStart(2, '0');
+}
 
 /* 画面に並べるキー（実物と同じ、中央が最低音） */
 function fallLanes() {
@@ -1994,6 +2017,9 @@ function openFall() {
   fall.ctx = fall.canvas.getContext('2d');
   fall.order = fallLanes();
   fall.hit = fall.order.map(() => 0);
+  fall.pos = 0;
+  fall.paused = false;
+  fall.drag = null;
   buildFallNotes();
   document.getElementById('fallTempo').value = state.tempo;
   document.getElementById('fallSpeed').value = fall.speed;
@@ -2022,6 +2048,8 @@ function buildFallNotes() {
       steps: e.p.slice(),
       lanes: e.p.map(s => (lane[s] === undefined ? -1 : lane[s]))
     }));
+  const last = fall.notes.length ? fall.notes[fall.notes.length - 1] : null;
+  fall.total = last ? last.t + last.dur : 0;
 }
 
 function fallResize() {
@@ -2050,7 +2078,7 @@ function fallLoop() {
   if (Math.abs(fall.canvas.getBoundingClientRect().width - fall.w) > 1) fallResize();
 
   const W = fall.w, H = fall.h;
-  const keyH = 122;                      // 下のカリンバ本体の高さ
+  const keyH = FALL_KEY_H;
   const judgeY = H - keyH;
   const lead = fallLead();
   const pps = judgeY / lead;             // 1 秒あたり何 px 落ちるか
@@ -2061,9 +2089,16 @@ function fallLoop() {
   const laneW = bodyW / n;
   const tineW = Math.max(7, Math.min(laneW * 0.72, 32));   // キー1本の幅
 
-  /* いまの時刻。停止中は曲の先頭で止めて、これから弾く音が見えるようにする */
-  let now = 0;
-  if (playing && playInfo) now = ac().currentTime - playInfo.t0 + playInfo.offset;
+  /* いまの時刻。鳴っていないときは fall.pos（一時停止した位置やドラッグ先）を見せる */
+  let now = fall.pos;
+  if (playing && playInfo) {
+    now = ac().currentTime - playInfo.t0 + playInfo.offset;
+    fall.pos = Math.max(0, now);
+  } else if (fall.wasPlaying && !fall.drag && fall.pos >= fall.total - 0.05) {
+    now = fall.pos = 0;              // 最後まで鳴り終わったら先頭に戻す
+    fall.paused = false;
+  }
+  fall.wasPlaying = playing;
 
   c.clearRect(0, 0, W, H);
   c.fillStyle = '#0f1420';
@@ -2090,7 +2125,8 @@ function fallLoop() {
   /* ノーツ */
   /* カリンバは弾いたら鳴りっぱなしで、押さえ続ける奏法がない。
      そのためノーツは音の長さで伸ばさず、一定の高さにする */
-  const hgt = 26;
+  const hgt = 30;
+  const noteFs = Math.max(11, Math.min(16, tineW * 0.55));
   fall.notes.forEach(nt => {
     const dy = (nt.t - now) * pps;
     if (dy > judgeY + 40 || dy < -hgt - 40) return;
@@ -2099,19 +2135,18 @@ function fallLoop() {
       if (ln < 0) return;
       const w = tineW;
       const x = bodyX + ln * laneW + (laneW - w) / 2;
+      /* 角は丸めない。上だけ丸いと、どこを弾くのかがかえって読みにくい */
       c.fillStyle = laneColor(nt.steps[k]);
-      roundRect(c, x, y - hgt, w, hgt, Math.min(7, w / 2));
-      c.fill();
+      c.fillRect(x, y - hgt, w, hgt);
       c.fillStyle = 'rgba(255,255,255,.9)';          // 弾く瞬間の側を明るく
-      roundRect(c, x, y - 4, w, 4, 2);
-      c.fill();
-      if (w >= 16) {
+      c.fillRect(x, y - 4, w, 4);
+      if (w >= 15) {
         c.fillStyle = '#fff';
-        c.font = '600 12px ' + FONT_JP;
+        c.font = '700 ' + noteFs.toFixed(1) + 'px ' + FONT_JP;
         c.textAlign = 'center';
-        c.fillText(numberOf(nt.steps[k]), x + w / 2, y - 7);
+        c.fillText(numberOf(nt.steps[k]), x + w / 2, y - 10);
       }
-      if (Math.abs(dy) < 0.05 * pps) fall.hit[ln] = 0.2;   // 判定ラインを通過
+      if (playing && Math.abs(dy) < 0.05 * pps) fall.hit[ln] = 0.2;   // 判定ラインを通過
     });
   });
 
@@ -2152,27 +2187,28 @@ function fallLoop() {
     roundRect(c, x, judgeY, w, len, [0, 0, w / 2, w / 2]);
     c.fill();
 
-    /* 番号と階名はキーの上のほう（短いキーにも収まる位置）に書く */
-    if (w >= 15) {
+    /* 番号と階名はキーの上のほうに書く。
+       キーの幅に合わせて、収まる範囲でできるだけ大きくする */
+    if (w >= 13) {
       c.textAlign = 'center';
       c.fillStyle = '#23303f';
-      c.font = '700 13px ' + FONT_JP;
-      c.fillText(numberOf(step), x + w / 2, judgeY + 22);
-      if (w >= 24) {
+      c.font = '700 ' + Math.max(11, Math.min(17, w * 0.58)).toFixed(1) + 'px ' + FONT_JP;
+      c.fillText(numberOf(step), x + w / 2, judgeY + 25);
+      if (w >= 22) {
         c.fillStyle = '#5c6a7e';
-        c.font = '11px ' + FONT_JP;
-        c.fillText(solfegeOf(step), x + w / 2, judgeY + 38);
+        c.font = Math.max(10, Math.min(14, w * 0.46)).toFixed(1) + 'px ' + FONT_JP;
+        c.fillText(solfegeOf(step), x + w / 2, judgeY + 43);
       }
     }
     if (fall.hit[i] > 0) fall.hit[i] -= 1 / 60;
   }
 
   /* キーを押さえている金具（ブリッジ）。実物のカリンバにある横棒 */
-  const bar = c.createLinearGradient(0, judgeY + 44, 0, judgeY + 54);
+  const bar = c.createLinearGradient(0, judgeY + 50, 0, judgeY + 61);
   bar.addColorStop(0, '#a9834f');
   bar.addColorStop(1, '#7d5a33');
   c.fillStyle = bar;
-  c.fillRect(bodyX + 4, judgeY + 44, bodyW - 8, 10);
+  c.fillRect(bodyX + 4, judgeY + 50, bodyW - 8, 11);
 
   /* 判定ライン。キーの上端に重ねて、いちばん手前に描く */
   c.strokeStyle = 'rgba(255,196,40,.35)';
@@ -2184,11 +2220,8 @@ function fallLoop() {
 
   const info = document.getElementById('fallInfo');
   if (info) {
-    const last = fall.notes.length ? fall.notes[fall.notes.length - 1] : null;
-    const total = last ? last.t + last.dur : 0;
-    info.textContent = playing
-      ? (Math.max(0, now) | 0) + ' / ' + (total | 0) + ' 秒'
-      : fall.notes.length + ' 音・' + (total | 0) + ' 秒';
+    info.textContent = mmss(Math.max(0, now)) + ' / ' + mmss(fall.total) +
+                       '\u3000' + fall.notes.length + ' 音';
   }
 }
 
@@ -2212,20 +2245,71 @@ function roundRect(c, x, y, w, h, r) {
 
 function syncFallButtons() {
   const p = document.getElementById('fallPlay');
-  if (p) p.textContent = playing ? '■ 停止' : '▶ 開始';
+  if (p) p.textContent = playing ? '⏸ 一時停止' : (fall.paused ? '▶ 再開' : '▶ 開始');
   const m = document.getElementById('fallMetro');
   if (m) m.classList.toggle('on', metroOn);
   const s = document.getElementById('fallSilent');
   if (s) s.classList.toggle('on', silent);
 }
 
-/* 練習画面からの再生。ノーツが落ちてくる時間ぶん、鳴り始めを遅らせる */
+/* 練習画面の再生ボタン。鳴っているときは一時停止（いまの位置を残す）。
+   止まっているときは、いま画面に出ている位置から鳴らす。
+   一時停止からの再開以外は、ノーツが落ちてくるぶんの待ち時間を入れる */
 function fallTogglePlay() {
-  if (playing) { stop(); syncFallButtons(); return; }
+  if (playing) {
+    fall.paused = true;
+    stop();                       // stop() の中から syncFallButtons が呼ばれる
+    return;
+  }
   buildFallNotes();
+  if (fall.pos >= fall.total - 0.05) { fall.pos = 0; fall.paused = false; }
   playMode = 'all';
-  play(0, fallLead());
+  play(0, fall.paused ? 0 : fallLead(), fall.pos);
+  fall.paused = false;
   syncFallButtons();
+}
+
+/* 曲の先頭に戻す */
+function fallReset() {
+  stop();
+  fall.paused = false;
+  fall.pos = 0;
+  syncFallButtons();
+}
+
+/* 画面を上下にドラッグして再生位置を動かす。
+   ノーツをつかんで下へ引くと先へ、上へ戻すと前へ進む */
+function bindFallDrag(cv) {
+  cv.addEventListener('pointerdown', e => {
+    if (!fall.on) return;
+    e.preventDefault();
+    try { cv.setPointerCapture(e.pointerId); } catch (err) { /* 無視 */ }
+    cv.classList.add('drag');
+    fall.drag = { y: e.clientY, pos: fall.pos, was: playing };
+    if (playing) { fall.paused = true; stop(); }
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!fall.drag) return;
+    const t = fall.drag.pos + (e.clientY - fall.drag.y) / fallPps();
+    fall.pos = Math.max(0, Math.min(fall.total, t));
+  });
+  const end = () => {
+    if (!fall.drag) return;
+    const was = fall.drag.was;
+    fall.drag = null;
+    cv.classList.remove('drag');
+    if (was && fall.pos < fall.total - 0.05) {   // 鳴らしていたならそのまま続ける
+      buildFallNotes();
+      playMode = 'all';
+      play(0, 0, fall.pos);
+      fall.paused = false;
+    } else {
+      fall.paused = fall.pos > 0;
+    }
+    syncFallButtons();
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
 }
 
 /* ============================================================
@@ -2304,6 +2388,8 @@ function bindUi() {
   $('btnFall').addEventListener('click', () => { openFall(); blurAll(); });
   $('fallClose').addEventListener('click', () => { closeFall(); blurAll(); });
   $('fallPlay').addEventListener('click', () => { fallTogglePlay(); blurAll(); });
+  $('fallStop').addEventListener('click', () => { fallReset(); blurAll(); });
+  bindFallDrag($('fallCanvas'));
   $('fallMetro').addEventListener('click', () => { setMetro(!metroOn); syncFallButtons(); blurAll(); });
   $('fallSilent').addEventListener('click', () => { setSilent(!silent); syncFallButtons(); blurAll(); });
   $('fallTempo').addEventListener('change', e => {
