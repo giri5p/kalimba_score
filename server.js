@@ -17,13 +17,27 @@ const TYPES = {
   '.css':  'text/css; charset=utf-8'
 };
 
+/* 拡張子のないパス（/practice など）用。ページ本体を返す */
+function serveIndex(res) {
+  fs.readFile(path.join(ROOT, 'index.html'), (err, data) => {
+    if (err) { res.writeHead(404); res.end('not found'); return; }
+    res.writeHead(200, { 'Content-Type': TYPES['.html'], 'Cache-Control': 'no-store' });
+    res.end(data);
+  });
+}
+
 http.createServer((req, res) => {
   let p = decodeURIComponent(url.parse(req.url).pathname);
   if (p === '/') p = '/index.html';
   const file = path.join(ROOT, p);
   if (!file.startsWith(ROOT)) { res.writeHead(403); res.end('forbidden'); return; }
   fs.readFile(file, (err, data) => {
-    if (err) { res.writeHead(404); res.end('not found'); return; }
+    if (err) {
+      /* /practice のような拡張子なしのパスは index.html を返す。
+         本番（Cloudflare）でも not_found_handling で同じことをしています */
+      if (!path.extname(file)) { serveIndex(res); return; }
+      res.writeHead(404); res.end('not found'); return;
+    }
     res.writeHead(200, {
       'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
       'Cache-Control': 'no-store'          // 編集したらすぐ反映されるように

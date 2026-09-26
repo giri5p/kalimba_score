@@ -241,6 +241,7 @@ let sysGeom = [];       // sysGeom[段] = {top, bot, left, right}
 let seekRects = [];     // 段ごとの「ここまで再生した」帯
 let seekEdge = null;    // 再生位置を示す縦線
 let anchorLine = -1;    // いま画面の上端に合わせている段
+let booted = false;     // 起動時の1回目の描画が終わったか
 let selGroup = null;
 
 function svgEl(tag, attrs) {
@@ -527,6 +528,9 @@ function drawSelection(scroll) {
   if (gc && scroll !== false) scrollIntoView(gc);
 }
 function scrollIntoView(g, follow) {
+  /* 開いた直後はページのいちばん上（広告や曲名）が見えていてほしいので、
+     起動時の描画では動かさない */
+  if (!booted) return;
   const paper = document.getElementById('paper');
   const svg = document.querySelector('#score svg');
   if (!svg) return;
@@ -1045,14 +1049,22 @@ function buildEvents() {
   return { evs: evs, total: t };
 }
 
-function play(startAt) {
+/* startAt は「何番目の音符から」。fromTime を渡すと「曲の何秒目から」になり、
+   画面の時計もその秒数から進む（練習画面の一時停止・シークで使う） */
+function play(startAt, leadIn, fromTime) {
   if (mic.on) micStop();
   stop();
   const c = ac();
   const r = buildEvents();
-  const t0 = c.currentTime + 0.12;
-  const from = r.evs.findIndex(e => e.i >= startAt);
-  const list = from > 0 ? r.evs.slice(from) : r.evs.slice();
+  const t0 = c.currentTime + 0.12 + (leadIn || 0);
+  let list;
+  if (fromTime != null) {
+    const i0 = r.evs.findIndex(e => e.t >= fromTime - 1e-6);
+    list = i0 < 0 ? [] : r.evs.slice(i0);
+  } else {
+    const from = r.evs.findIndex(e => e.i >= startAt);
+    list = from > 0 ? r.evs.slice(from) : r.evs.slice();
+  }
   if (!list.length) return;
   /* タイの途中から鳴らすときは、伸びてきている音をここで鳴らし直す */
   if (!list[0].rest && !list[0].p.length) {
@@ -1062,7 +1074,7 @@ function play(startAt) {
       p: n.p.slice(), durs: n.p.map(p => tiedLength(list[0].i, p, spq))
     });
   }
-  const offset = list[0].t;
+  const offset = fromTime != null ? fromTime : list[0].t;
   playing = true;
   anchorLine = -1;              // 再生を始める段を必ず上端に出す
   bus = c.createGain();
@@ -1128,6 +1140,7 @@ function stop() {
   playing = false;
   hidePlayhead();
   syncPlayButtons();
+  if (fall.on) syncFallButtons();
 }
 
 /* 「最初から」「ここから」の 2 つのボタン。鳴っている側が停止ボタンになる */
@@ -1197,6 +1210,11 @@ function exportPng() {
    10. キーボード
    ============================================================ */
 function onKey(e) {
+  if (fall.on) {                                   // 練習画面では再生と終了だけ
+    if (e.key === 'Escape') { e.preventDefault(); closeFall(); }
+    else if (e.key === ' ') { e.preventDefault(); fallTogglePlay(); }
+    return;
+  }
   if (!document.getElementById('tutorial').hidden) {
     if (e.key === 'Escape') { e.preventDefault(); closeTutorial(); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); tutMove(1); }
@@ -1625,7 +1643,7 @@ function decodeScore(str) {
 }
 
 function shareUrl() {
-  return location.origin + location.pathname + '#s=' + encodeScore();
+  return location.origin + scorePath() + '#s=' + encodeScore();
 }
 
 /* ---------- 曲パネル ---------- */
@@ -1887,6 +1905,8 @@ const TUT = [
       '<li><b>▶ 最初から</b> … 曲の頭から鳴らします（<kbd>Shift</kbd>+<kbd>Space</kbd>）</li>' +
       '<li><b>▶ ここから</b> … えらんだ音符から鳴らします（<kbd>Space</kbd>）</li>' +
       '<li><b>🔔 拍</b> … メトロノーム。テンポに合わせてクリック音が鳴ります</li>' +
+      '<li><b>🎵 練習</b> … カリンバと同じキーの並びに、楽譜どおりの<b>ノーツが上から降ってきます</b>。' +
+      '下の線に届いた瞬間がその音を弾くタイミングです</li>' +
       '<li><b>🔇 無音</b> … <b>音を出さずに譜面の進行だけ</b>動きます。' +
       '自分でカリンバを弾きながら、今どこを弾いているか目で追うためのモードです</li>' +
       '</ul>' +
@@ -1953,7 +1973,385 @@ function tutMove(d) {
 }
 
 /* ============================================================
-   18. 起動
+   19. ノーツ練習画面
+   ------------------------------------------------------------
+   カリンバの実物と同じキーの並びでレーンを作り、楽譜どおりに
+   ノーツを上から落とす。下の判定ラインに届いた瞬間がその音を
+   弾くタイミング。弾くのは人間なので、当たり判定や採点はしない。
+   ============================================================ */
+const FALL_SPEED_KEY = 'kalimba-fall-speed';
+const fall = {
+  on: false, raf: 0, canvas: null, ctx: null,
+  w: 0, h: 0, dpr: 1,
+  notes: [],          // {t, dur, lanes:[..], steps:[..]}
+  order: [],          // 画面左から右へ並べたキーの step
+  speed: 4,           // 1〜10。大きいほど速く落ちる
+  hit: [],            // レーンごとの「光らせる残り時間」
+  pos: 0,             // いま見ている位置（曲の先頭からの秒数）
+  total: 0,           // 曲全体の長さ（秒）
+  paused: false,      // 一時停止して位置を保っている
+  wasPlaying: false,  // 前のフレームで鳴っていたか
+  drag: null          // ドラッグ中の情報
+};
+
+const FALL_KEY_H = 132;                          // 下のカリンバ本体の高さ
+/* 1 秒あたり何 px 落ちるか。ドラッグの移動量を秒に直すのにも使う */
+const fallPps = () => Math.max(1, fall.h - FALL_KEY_H) / fallLead();
+
+const fallLead = () => 6 - fall.speed * 0.5;      // 何秒先まで見えるか
+
+/* 練習画面は /practice という別の URL にしておく。
+   こうしておくと、リロードしても練習画面のまま開けるし、
+   ブラウザの「戻る」でも楽譜ページにもどれる。
+   file:// で開いているときは履歴を書き換えられないので、そのときは何もしない */
+const FALL_SEG = 'practice';
+
+function dirPath() {                    // いま開いているページのあるフォルダ
+  const p = location.pathname;
+  return p.slice(0, p.lastIndexOf('/') + 1);
+}
+function fallPath()  { return dirPath() + FALL_SEG; }
+function isFallPath(){ return location.pathname === fallPath(); }
+/* 楽譜ページ側のパス（共有リンクなどはこちらを使う） */
+function scorePath() { return isFallPath() ? dirPath() : location.pathname; }
+
+function goPath(path, state, replace) {
+  const url = path + location.search + location.hash;
+  try {
+    if (replace) history.replaceState(state || null, "", url);
+    else history.pushState(state || null, "", url);
+  } catch (e) { /* file:// などでは URL を変えられない */ }
+}
+
+/* 秒を 0:00 の形にする */
+function mmss(sec) {
+  const t = Math.max(0, Math.round(sec));
+  return (t / 60 | 0) + ':' + String(t % 60).padStart(2, '0');
+}
+
+/* 画面に並べるキー（実物と同じ、中央が最低音） */
+function fallLanes() {
+  const p = P();
+  return tineOrder(p.count).map(k => p.base + k);
+}
+
+/* back は「ブラウザの戻る／進むで来た」ときに true。そのときは URL をいじらない */
+function openFall(back) {
+  const box = document.getElementById('fall');
+  if (!box) return;
+  if (!back) goPath(fallPath(), { fall: 1 });
+  box.hidden = false;
+  fall.on = true;
+  fall.canvas = document.getElementById('fallCanvas');
+  fall.ctx = fall.canvas.getContext('2d');
+  fall.order = fallLanes();
+  fall.hit = fall.order.map(() => 0);
+  fall.pos = 0;
+  fall.paused = false;
+  fall.drag = null;
+  buildFallNotes();
+  document.getElementById('fallTempo').value = state.tempo;
+  document.getElementById('fallSpeed').value = fall.speed;
+  syncFallButtons();
+  fallResize();
+  fallLoop();
+}
+
+function closeFall(back) {
+  fall.on = false;
+  cancelAnimationFrame(fall.raf);
+  stop();
+  const box = document.getElementById('fall');
+  if (box) box.hidden = true;
+  if (back) return;
+  if (history.state && history.state.fall) history.back();   // 履歴を増やさない
+  else goPath(scorePath(), null, true);
+}
+
+/* ブラウザの戻る／進むに合わせて開け閉めする */
+window.addEventListener('popstate', () => {
+  if (isFallPath() && !fall.on) openFall(true);
+  else if (!isFallPath() && fall.on) closeFall(true);
+});
+
+/* 楽譜から「弾く音」だけを取り出す（タイで伸びている音は弾き直さない） */
+function buildFallNotes() {
+  const lane = {};
+  fall.order.forEach((step, i) => { lane[step] = i; });
+  fall.notes = buildEvents().evs
+    .filter(e => !e.rest && e.p.length)
+    .map(e => ({
+      t: e.t,
+      dur: Math.max.apply(null, e.durs.concat([e.dur])),
+      steps: e.p.slice(),
+      lanes: e.p.map(s => (lane[s] === undefined ? -1 : lane[s]))
+    }));
+  const last = fall.notes.length ? fall.notes[fall.notes.length - 1] : null;
+  fall.total = last ? last.t + last.dur : 0;
+}
+
+function fallResize() {
+  if (!fall.canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const r = fall.canvas.getBoundingClientRect();
+  fall.dpr = dpr;
+  fall.w = r.width;
+  fall.h = r.height;
+  fall.canvas.width = Math.round(r.width * dpr);
+  fall.canvas.height = Math.round(r.height * dpr);
+  fall.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+/* オクターブごとに色を変えて、高い音・低い音を見分けやすくする */
+function laneColor(step) {
+  const o = octOf(step);
+  return o <= 4 ? '#4f8bf0' : o === 5 ? '#27b0a6' : '#b072e8';
+}
+
+function fallLoop() {
+  if (!fall.on) return;
+  fall.raf = requestAnimationFrame(fallLoop);
+  const c = fall.ctx;
+  if (!c) return;
+  if (Math.abs(fall.canvas.getBoundingClientRect().width - fall.w) > 1) fallResize();
+
+  const W = fall.w, H = fall.h;
+  const keyH = FALL_KEY_H;
+  const judgeY = H - keyH;
+  const lead = fallLead();
+  const pps = judgeY / lead;             // 1 秒あたり何 px 落ちるか
+  const n = fall.order.length;
+  const botPad = 12;                                       // 本体の下の余白
+  const bodyW = Math.min(W - 16, n * 46);                  // 実物に近い幅で頭打ちにする
+  const bodyX = (W - bodyW) / 2;                           // 残りが左右の余白になる
+  const laneW = bodyW / n;
+  const tineW = Math.max(7, Math.min(laneW * 0.72, 32));   // キー1本の幅
+
+  /* いまの時刻。鳴っていないときは fall.pos（一時停止した位置やドラッグ先）を見せる */
+  let now = fall.pos;
+  if (playing && playInfo) {
+    now = ac().currentTime - playInfo.t0 + playInfo.offset;
+    fall.pos = Math.max(0, now);
+  } else if (fall.wasPlaying && !fall.drag && fall.pos >= fall.total - 0.05) {
+    now = fall.pos = 0;              // 最後まで鳴り終わったら先頭に戻す
+    fall.paused = false;
+  }
+  fall.wasPlaying = playing;
+
+  c.clearRect(0, 0, W, H);
+  c.fillStyle = '#0f1420';
+  c.fillRect(0, 0, W, H);
+
+  /* レーンの縞 */
+  for (let i = 0; i < n; i++) {
+    c.fillStyle = i % 2 ? '#141b2a' : '#121826';
+    c.fillRect(bodyX + i * laneW, 0, laneW, judgeY);
+  }
+
+  /* 拍の線（小節のあたまは太く） */
+  const beat = (60 / state.tempo) * (4 / state.beatValue);
+  const barBeats = state.beats;
+  for (let b = Math.ceil(now / beat); b * beat < now + lead; b++) {
+    const y = judgeY - (b * beat - now) * pps;
+    if (y < 0) break;
+    const isBar = ((b % barBeats) + barBeats) % barBeats === 0;
+    c.strokeStyle = isBar ? '#33415e' : '#1e2739';
+    c.lineWidth = isBar ? 2 : 1;
+    c.beginPath(); c.moveTo(bodyX, y + 0.5); c.lineTo(bodyX + bodyW, y + 0.5); c.stroke();
+  }
+
+  /* ノーツ */
+  /* カリンバは弾いたら鳴りっぱなしで、押さえ続ける奏法がない。
+     そのためノーツは音の長さで伸ばさず、一定の高さにする */
+  const hgt = 30;
+  const noteFs = Math.max(11, Math.min(16, tineW * 0.55));
+  fall.notes.forEach(nt => {
+    const dy = (nt.t - now) * pps;
+    if (dy > judgeY + 40 || dy < -hgt - 40) return;
+    const y = judgeY - dy;
+    nt.lanes.forEach((ln, k) => {
+      if (ln < 0) return;
+      const w = tineW;
+      const x = bodyX + ln * laneW + (laneW - w) / 2;
+      /* 角は丸めない。上だけ丸いと、どこを弾くのかがかえって読みにくい */
+      c.fillStyle = laneColor(nt.steps[k]);
+      c.fillRect(x, y - hgt, w, hgt);
+      c.fillStyle = 'rgba(255,255,255,.9)';          // 弾く瞬間の側を明るく
+      c.fillRect(x, y - 4, w, 4);
+      if (w >= 15) {
+        c.fillStyle = '#fff';
+        c.font = '700 ' + noteFs.toFixed(1) + 'px ' + FONT_JP;
+        c.textAlign = 'center';
+        c.fillText(numberOf(nt.steps[k]), x + w / 2, y - 10);
+      }
+      if (playing && Math.abs(dy) < 0.05 * pps) fall.hit[ln] = 0.2;   // 判定ラインを通過
+    });
+  });
+
+
+  /* 下は実物のカリンバに似せて描く。
+     木の本体の上に、中央ほど長い金属のキーが並ぶ形 */
+  const wood = c.createLinearGradient(0, judgeY, 0, H - botPad);
+  wood.addColorStop(0, '#e0bd94');
+  wood.addColorStop(0.45, '#cda173');
+  wood.addColorStop(1, '#b6885a');
+  c.fillStyle = wood;
+  roundRect(c, bodyX, judgeY, bodyW, keyH - botPad, 14);
+  c.fill();
+
+  const mid = (n - 1) / 2;
+  const tineMax = keyH - 18;
+  const tineStep = Math.min(6, (tineMax - 46) / Math.max(1, mid));
+  for (let i = 0; i < n; i++) {
+    const step = fall.order[i];
+    const len = tineMax - Math.abs(i - mid) * tineStep;   // 中央ほど長い
+    const w = tineW;
+    const x = bodyX + i * laneW + (laneW - w) / 2;
+    const glow = fall.hit[i] > 0;
+
+    /* キー（金属板）。上端は判定ラインにそろえ、下へ伸ばす */
+    const metal = c.createLinearGradient(x, 0, x + w, 0);
+    if (glow) {
+      metal.addColorStop(0, '#ffffff');
+      metal.addColorStop(0.5, laneColor(step));
+      metal.addColorStop(1, '#9fb4d8');
+    } else {
+      metal.addColorStop(0, '#6f7c8e');
+      metal.addColorStop(0.35, '#e8eef6');
+      metal.addColorStop(0.7, '#aab7c8');
+      metal.addColorStop(1, '#6b7788');
+    }
+    c.fillStyle = metal;
+    roundRect(c, x, judgeY, w, len, [0, 0, w / 2, w / 2]);
+    c.fill();
+
+    /* 番号と階名はキーの上のほうに書く。
+       キーの幅に合わせて、収まる範囲でできるだけ大きくする */
+    if (w >= 13) {
+      c.textAlign = 'center';
+      c.fillStyle = '#23303f';
+      c.font = '700 ' + Math.max(11, Math.min(17, w * 0.58)).toFixed(1) + 'px ' + FONT_JP;
+      c.fillText(numberOf(step), x + w / 2, judgeY + 25);
+      if (w >= 22) {
+        c.fillStyle = '#5c6a7e';
+        c.font = Math.max(10, Math.min(14, w * 0.46)).toFixed(1) + 'px ' + FONT_JP;
+        c.fillText(solfegeOf(step), x + w / 2, judgeY + 43);
+      }
+    }
+    if (fall.hit[i] > 0) fall.hit[i] -= 1 / 60;
+  }
+
+  /* キーを押さえている金具（ブリッジ）。実物のカリンバにある横棒 */
+  const bar = c.createLinearGradient(0, judgeY + 50, 0, judgeY + 61);
+  bar.addColorStop(0, '#a9834f');
+  bar.addColorStop(1, '#7d5a33');
+  c.fillStyle = bar;
+  c.fillRect(bodyX + 4, judgeY + 50, bodyW - 8, 11);
+
+  /* 判定ライン。キーの上端に重ねて、いちばん手前に描く */
+  c.strokeStyle = 'rgba(255,196,40,.35)';
+  c.lineWidth = 6;
+  c.beginPath(); c.moveTo(bodyX, judgeY); c.lineTo(bodyX + bodyW, judgeY); c.stroke();
+  c.strokeStyle = '#ffc428';
+  c.lineWidth = 2;
+  c.beginPath(); c.moveTo(bodyX, judgeY); c.lineTo(bodyX + bodyW, judgeY); c.stroke();
+
+  const info = document.getElementById('fallInfo');
+  if (info) {
+    info.textContent = mmss(Math.max(0, now)) + ' / ' + mmss(fall.total) +
+                       '\u3000' + fall.notes.length + ' 音';
+  }
+}
+
+/* r は数値か [左上, 右上, 右下, 左下] */
+function roundRect(c, x, y, w, h, r) {
+  const a = Array.isArray(r) ? r : [r, r, r, r];
+  const m = Math.min(w, h) / 2;
+  const q = a.map(v => Math.max(0, Math.min(v, m)));
+  c.beginPath();
+  c.moveTo(x + q[0], y);
+  c.lineTo(x + w - q[1], y);
+  c.quadraticCurveTo(x + w, y, x + w, y + q[1]);
+  c.lineTo(x + w, y + h - q[2]);
+  c.quadraticCurveTo(x + w, y + h, x + w - q[2], y + h);
+  c.lineTo(x + q[3], y + h);
+  c.quadraticCurveTo(x, y + h, x, y + h - q[3]);
+  c.lineTo(x, y + q[0]);
+  c.quadraticCurveTo(x, y, x + q[0], y);
+  c.closePath();
+}
+
+function syncFallButtons() {
+  const p = document.getElementById('fallPlay');
+  if (p) p.textContent = playing ? '⏸ 一時停止' : (fall.paused ? '▶ 再開' : '▶ 開始');
+  const m = document.getElementById('fallMetro');
+  if (m) m.classList.toggle('on', metroOn);
+  const s = document.getElementById('fallSilent');
+  if (s) s.classList.toggle('on', silent);
+}
+
+/* 練習画面の再生ボタン。鳴っているときは一時停止（いまの位置を残す）。
+   止まっているときは、いま画面に出ている位置から鳴らす。
+   一時停止からの再開以外は、ノーツが落ちてくるぶんの待ち時間を入れる */
+function fallTogglePlay() {
+  if (playing) {
+    fall.paused = true;
+    stop();                       // stop() の中から syncFallButtons が呼ばれる
+    return;
+  }
+  buildFallNotes();
+  if (fall.pos >= fall.total - 0.05) { fall.pos = 0; fall.paused = false; }
+  playMode = 'all';
+  play(0, fall.paused ? 0 : fallLead(), fall.pos);
+  fall.paused = false;
+  syncFallButtons();
+}
+
+/* 曲の先頭に戻す */
+function fallReset() {
+  stop();
+  fall.paused = false;
+  fall.pos = 0;
+  syncFallButtons();
+}
+
+/* 画面を上下にドラッグして再生位置を動かす。
+   ノーツをつかんで下へ引くと先へ、上へ戻すと前へ進む */
+function bindFallDrag(cv) {
+  cv.addEventListener('pointerdown', e => {
+    if (!fall.on) return;
+    e.preventDefault();
+    try { cv.setPointerCapture(e.pointerId); } catch (err) { /* 無視 */ }
+    cv.classList.add('drag');
+    fall.drag = { y: e.clientY, pos: fall.pos, was: playing };
+    if (playing) { fall.paused = true; stop(); }
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!fall.drag) return;
+    const t = fall.drag.pos + (e.clientY - fall.drag.y) / fallPps();
+    fall.pos = Math.max(0, Math.min(fall.total, t));
+  });
+  const end = () => {
+    if (!fall.drag) return;
+    const was = fall.drag.was;
+    fall.drag = null;
+    cv.classList.remove('drag');
+    if (was && fall.pos < fall.total - 0.05) {   // 鳴らしていたならそのまま続ける
+      buildFallNotes();
+      playMode = 'all';
+      play(0, 0, fall.pos);
+      fall.paused = false;
+    } else {
+      fall.paused = fall.pos > 0;
+    }
+    syncFallButtons();
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+}
+
+/* ============================================================
+   20. 起動
    ============================================================ */
 function bindUi() {
   const $ = id => document.getElementById(id);
@@ -2025,6 +2423,24 @@ function bindUi() {
     render();                       // 高さが変わるので譜面を描き直す
     blurAll();
   });
+  $('btnFall').addEventListener('click', () => { openFall(); blurAll(); });
+  $('fallClose').addEventListener('click', () => { closeFall(); blurAll(); });
+  $('fallPlay').addEventListener('click', () => { fallTogglePlay(); blurAll(); });
+  $('fallStop').addEventListener('click', () => { fallReset(); blurAll(); });
+  bindFallDrag($('fallCanvas'));
+  $('fallMetro').addEventListener('click', () => { setMetro(!metroOn); syncFallButtons(); blurAll(); });
+  $('fallSilent').addEventListener('click', () => { setSilent(!silent); syncFallButtons(); blurAll(); });
+  $('fallTempo').addEventListener('change', e => {
+    state.tempo = Math.max(30, Math.min(240, +e.target.value || 90));
+    e.target.value = state.tempo;
+    $('tempo').value = state.tempo;
+    buildFallNotes();
+    syncPanel(); autosave();
+  });
+  $('fallSpeed').addEventListener('input', e => {
+    fall.speed = +e.target.value;
+    try { localStorage.setItem(FALL_SPEED_KEY, String(fall.speed)); } catch (err) {}
+  });
   $('btnSongs').addEventListener('click', () => { openSongs(); blurAll(); });
   $('btnHelp').addEventListener('click', () => { openTutorial(0); blurAll(); });
   $('tutClose').addEventListener('click', () => { closeTutorial(); blurAll(); });
@@ -2077,7 +2493,7 @@ function bindUi() {
   let rt = null;
   window.addEventListener('resize', () => {
     clearTimeout(rt);
-    rt = setTimeout(() => { syncMode(); render(); }, 150);
+    rt = setTimeout(() => { syncMode(); render(); if (fall.on) fallResize(); }, 150);
   });
 }
 
@@ -2117,14 +2533,21 @@ function boot() {
   }
   readOnly = window.matchMedia(NARROW).matches;   // 画面の広さだけで決める
   try { setSilent(localStorage.getItem(SILENT_KEY) === '1'); } catch (e) {}
+  try {
+    const sp = +localStorage.getItem(FALL_SPEED_KEY);
+    if (sp >= 1 && sp <= 10) fall.speed = sp;
+  } catch (e) {}
   let firstTime = true;
   try { firstTime = localStorage.getItem(TUT_KEY) !== '1'; } catch (e) {}
-  if (firstTime) setTimeout(() => openTutorial(0), 350);   // 描画が落ち着いてから
+  /* 練習画面の URL で来た人には、使い方モーダルを重ねない */
+  if (firstTime && !isFallPath()) setTimeout(() => openTutorial(0), 350);
   if (!state.notes.length) state.notes = [newNote(clampStep(0), 'q', false, true)];
   syncInputs();
   buildDurPalette();
   buildTines();
   refresh();
+  booted = true;
+  if (isFallPath()) openFall(true);       // /practice で来たらそのまま練習画面
 }
 
 function start() {
