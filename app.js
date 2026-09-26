@@ -968,6 +968,21 @@ function blurAll() { if (document.activeElement) document.activeElement.blur(); 
    ============================================================ */
 let audio = null, playing = false, timers = [], stopAt = 0, bus = null, playMode = 'here';
 let seekAnim = 0, playInfo = null;
+/* 無音再生: 音は出さず、シークバーとスクロールだけ動かす（自分で弾く練習用） */
+const SILENT_KEY = 'kalimba-silent';
+let silent = false;
+function setSilent(on) {
+  silent = !!on;
+  document.getElementById('btnSilent').classList.toggle('on', silent);
+  try { localStorage.setItem(SILENT_KEY, silent ? '1' : '0'); } catch (e) {}
+  if (silent && playing) {                 // 再生中に切り替えたら今の音も止める
+    const wasFrom = playMode;
+    const at = playInfo ? playInfo.list[playInfo.k].i : cursor;
+    stop();
+    playMode = wasFrom;
+    play(at);
+  }
+}
 function ac() {
   if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
   if (audio.state === 'suspended') audio.resume();
@@ -1055,9 +1070,11 @@ function play(startAt) {
   bus.connect(c.destination);
   const myBus = bus;
   syncPlayButtons();
-  list.forEach(e => {
-    e.p.forEach((s, k) => pluck(midiOf(s), t0 + e.t - offset, e.durs[k], null, myBus));
-  });
+  if (!silent) {
+    list.forEach(e => {
+      e.p.forEach((s, k) => pluck(midiOf(s), t0 + e.t - offset, e.durs[k], null, myBus));
+    });
+  }
   const endT = list.reduce((m, e) =>
     Math.max(m, e.t + Math.max(e.dur, e.durs.length ? Math.max.apply(null, e.durs) : 0)), 0);
   stopAt = setTimeout(stop, (endT - offset + 0.4) * 1000);
@@ -1800,6 +1817,7 @@ function bindUi() {
   $('modeAdd').addEventListener('click',  () => { setInputMode('add');  blurAll(); });
   $('modeTap').addEventListener('click',  () => { setInputMode('tap');  blurAll(); });
   $('btnMetro').addEventListener('click', () => { setMetro(!metroOn); blurAll(); });
+  $('btnSilent').addEventListener('click', () => { setSilent(!silent); blurAll(); });
   $('btnMic').addEventListener('click',   () => { micStart(); blurAll(); });
   $('micStop').addEventListener('click',  () => { micStop(); blurAll(); });
   $('micSens').addEventListener('input',  e => { micGate = +e.target.value / 1000; });
@@ -1917,6 +1935,7 @@ function boot() {
     } catch (e) { /* 壊れていたら初期状態 */ }
   }
   readOnly = window.matchMedia(NARROW).matches;   // 画面の広さだけで決める
+  try { setSilent(localStorage.getItem(SILENT_KEY) === '1'); } catch (e) {}
   if (!state.notes.length) state.notes = [newNote(clampStep(0), 'q', false, true)];
   syncInputs();
   buildDurPalette();
