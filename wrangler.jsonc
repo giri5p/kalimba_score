@@ -32,7 +32,7 @@
   //   npx wrangler kv namespace create KALIMBA
   // で出てきた id を、下の "id" に貼り付けます。
   "kv_namespaces": [
-    { "binding": "KV", "id": "ここに KV namespace の id を貼る" }
+    { "binding": "KV", "id": "14ea37eecb6441388054dad276a702ef" }
   ]
 
   // 新規登録はふだん誰でもできます。いたずらされたときだけ、
