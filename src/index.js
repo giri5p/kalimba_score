@@ -196,6 +196,15 @@ async function api(req, env, path) {
 export default {
   async fetch(req, env) {
     const path = new URL(req.url).pathname;
+
+    /* 練習画面の URL。実体のあるファイルではないので、
+       ここで楽譜ページ（トップ）の中身をそのまま返す。
+       /index.html ではなく / を取りに行くのは、
+       Cloudflare が /index.html を / へ転送してしまうため */
+    if (path === '/practice' || path === '/practice/') {
+      return env.ASSETS.fetch(new Request(new URL('/', req.url), { headers: req.headers }));
+    }
+
     if (path.startsWith('/api/')) {
       if (!env.KV) return bad('保存領域(KV)が設定されていません', 503);
       try {

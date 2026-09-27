@@ -17,14 +17,15 @@
     "directory": "./public",
     "binding": "ASSETS",
 
-    // 練習画面は /practice という URL にしています。
-    // 実体のないパスなので、見つからないときは index.html を返させます。
-    "not_found_handling": "single-page-application",
+    // 見つからないパスは 404.html を 404 で返します。
+    // 以前は single-page-application にしていたため、存在しない URL でも
+    // 200 で index.html が返り、検索エンジンから「中身が同じページが
+    // 無限にある」ように見えていました。
+    "not_found_handling": "404-page",
 
-    // /api/... だけは、静的ファイルより先にスクリプトへ回します。
-    // これがないと、上の single-page-application が先に効いて
-    // /api/... にも index.html が返ってしまいます。
-    "run_worker_first": ["/api/*"]
+    // /api/... と /practice は、静的ファイルより先にスクリプトへ回します。
+    // /practice は実体のないパスなので、スクリプトがトップの中身を返します。
+    "run_worker_first": ["/api/*", "/practice"]
   },
 
   // 曲とアカウントの保存先。

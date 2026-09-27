@@ -117,14 +117,26 @@ function sendHtml(res, file, onMissing) {
   });
 }
 
-/* 拡張子のないパスの扱い。本番（Cloudflare）に合わせて
-   まず「そのパス + .html」を探し、無ければ index.html を返す。
-   /about → about.html、/practice → index.html（練習画面）になります */
-function serveExtensionless(res, file) {
+/* 見つからないときは 404.html を 404 で返す（本番と同じ） */
+function send404(res) {
+  fs.readFile(path.join(ROOT, '404.html'), (err, data) => {
+    if (err) { res.writeHead(404); res.end('not found'); return; }
+    res.writeHead(404, { 'Content-Type': TYPES['.html'], 'Cache-Control': 'no-store' });
+    res.end(data);
+  });
+}
+
+/* 拡張子のないパスの扱い。本番（Cloudflare）に合わせる。
+     /about    → about.html
+     /practice → index.html（練習画面。本番では Worker が同じことをします）
+     それ以外  → 404 */
+function serveExtensionless(res, file, p) {
   sendHtml(res, file + '.html', () => {
-    sendHtml(res, path.join(ROOT, 'index.html'), () => {
-      res.writeHead(404); res.end('not found');
-    });
+    if (p === '/practice' || p === '/practice/') {
+      sendHtml(res, path.join(ROOT, 'index.html'), () => send404(res));
+      return;
+    }
+    send404(res);
   });
 }
 
@@ -144,8 +156,8 @@ http.createServer((req, res) => {
   if (!file.startsWith(ROOT)) { res.writeHead(403); res.end('forbidden'); return; }
   fs.readFile(file, (err, data) => {
     if (err) {
-      if (!path.extname(file)) { serveExtensionless(res, file); return; }
-      res.writeHead(404); res.end('not found'); return;
+      if (!path.extname(file)) { serveExtensionless(res, file, p); return; }
+      send404(res); return;
     }
     res.writeHead(200, {
       'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
