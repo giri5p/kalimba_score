@@ -170,6 +170,11 @@
   .msg{font-size:12px;margin:0 0 8px}
   .msg.err{color:#b3261e}
   .msg.ok{color:#146c2e}
+  /* 文章の中に置く、目立たせないボタン */
+  .linky{background:none;border:0;padding:0;font:inherit;color:#b3261e;
+         text-decoration:underline;cursor:pointer}
+  .linky:hover{background:none;color:#8c1d18}
+  .linky:disabled{color:var(--muted);cursor:default}
 
   /* ---------- ノーツ練習画面 ---------- */
   .fall{position:fixed;inset:0;z-index:60;background:#0f1420;display:flex;flex-direction:column}
@@ -461,6 +466,10 @@ function writeAdmaxTag(tags) {
           <button id="acctLogout">ログアウト</button>
         </div>
         <div id="cloudList" class="list"></div>
+        <p class="note">
+          <button class="linky" id="acctDelete">アカウントを削除する</button>
+          … アカウントと、クラウドに入れた曲をすべて消します。元に戻せません。
+        </p>
       </div>
 
       <p class="msg" id="acctMsg" hidden></p>
