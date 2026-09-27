@@ -2,6 +2,12 @@
 (function () {
 'use strict';
 
+/* サイトの版。
+   ここを書き換えると、すでに読んだ人にも使い方モーダルがもう一度出ます。
+   機能を足したときや説明を直したときに、日付を今日にしてください。
+   （読んだかどうかは、この文字列そのものを覚えておく形で判定しています） */
+const APP_VERSION = '2026-09-27';
+
 /* ============================================================
    1. 音階まわりの基礎データ
    ------------------------------------------------------------
@@ -1812,6 +1818,7 @@ function syncMode() {
    はじめて開いた人向けに、6 ステップで一通りを説明する。
    あとからでも「❓ 使い方」でいつでも開ける。
    ============================================================ */
+/* 覚えておくのは「読んだかどうか」ではなく「どの版を読んだか」 */
 const TUT_KEY = 'kalimba-tutorial-seen';
 
 const TUT = [
@@ -1975,7 +1982,7 @@ function openTutorial(step) {
 }
 function closeTutorial() {
   document.getElementById('tutorial').hidden = true;
-  try { localStorage.setItem(TUT_KEY, '1'); } catch (e) {}
+  try { localStorage.setItem(TUT_KEY, APP_VERSION); } catch (e) {}
 }
 function renderTutorial() {
   const t = TUT[tutStep];
@@ -2619,10 +2626,11 @@ function boot() {
     const sp = +localStorage.getItem(FALL_SPEED_KEY);
     if (sp >= 1 && sp <= 10) fall.speed = sp;
   } catch (e) {}
-  let firstTime = true;
-  try { firstTime = localStorage.getItem(TUT_KEY) !== '1'; } catch (e) {}
+  /* 初めての人と、前に読んだあと版が上がった人に出す */
+  let unread = true;
+  try { unread = localStorage.getItem(TUT_KEY) !== APP_VERSION; } catch (e) {}
   /* 練習画面の URL で来た人には、使い方モーダルを重ねない */
-  if (firstTime && !isFallPath()) setTimeout(() => openTutorial(0), 350);
+  if (unread && !isFallPath()) setTimeout(() => openTutorial(0), 350);
   if (!state.notes.length) state.notes = [newNote(clampStep(0), 'q', false, true)];
   syncInputs();
   buildDurPalette();
