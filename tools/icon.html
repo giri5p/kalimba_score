@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>アイコンを作り直す｜カリンバ楽譜メーカー</title>
+<style>
+  body{margin:0;padding:24px;background:#eceef2;color:#1c2024;
+       font:14px/1.8 "Yu Gothic UI","Meiryo",system-ui,sans-serif}
+  .card{background:#fff;border-radius:10px;padding:22px 24px;max-width:860px;margin:0 auto;
+        box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  h1{font-size:19px;margin:0 0 6px}
+  p{margin:0 0 12px}
+  .row{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin:16px 0}
+  .row div{text-align:center}
+  canvas{border:1px solid #d7dae0;background:#fff}
+  .px{image-rendering:pixelated}
+  .cap{font-size:11px;color:#6b7280;margin-top:4px}
+  button{font:inherit;padding:7px 14px;border:1px solid #2f6fed;border-radius:6px;
+         background:#2f6fed;color:#fff;cursor:pointer}
+  code{background:#f1f3f7;padding:1px 5px;border-radius:4px;font-size:12.5px}
+  ol{margin:0 0 12px;padding-left:1.4em}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>アイコンを作り直す</h1>
+  <p>
+    このページは<b>公開されません</b>（<code>public/</code> の外にあります）。
+    アイコンの絵を変えたくなったら、下の <code>kalimbaIcon()</code> を書き換えて、
+    このファイルをブラウザで開いてください。
+  </p>
+  <ol>
+    <li>下のボタンで PNG 一式をダウンロード</li>
+    <li>ダウンロードした PNG を <code>public/</code> に置き換える</li>
+    <li><code>favicon.ico</code> は 16 / 32 / 48 の PNG をまとめたものです。
+        README の「アイコン」を見てください</li>
+  </ol>
+  <div class="row" id="preview"></div>
+  <p><button id="dl">PNG をまとめてダウンロード</button></p>
+</div>
+
+<script>
+function rr(c, x, y, w, h, r) {
+  const a = Array.isArray(r) ? r : [r, r, r, r];
+  const m = Math.min(w, h) / 2;
+  const q = a.map(v => Math.max(0, Math.min(v, m)));
+  c.beginPath(); c.moveTo(x + q[0], y);
+  c.lineTo(x + w - q[1], y); c.quadraticCurveTo(x + w, y, x + w, y + q[1]);
+  c.lineTo(x + w, y + h - q[2]); c.quadraticCurveTo(x + w, y + h, x + w - q[2], y + h);
+  c.lineTo(x + q[3], y + h); c.quadraticCurveTo(x, y + h, x, y + h - q[3]);
+  c.lineTo(x, y + q[0]); c.quadraticCurveTo(x, y, x + q[0], y); c.closePath();
+}
+
+/* カリンバのアイコン。
+   キーは上のブリッジから下へ伸び（中央がいちばん長い）、サウンドホールは下。
+   16〜32px では、丸みと穴を省いてキーを3本にし、ピクセルの位置に合わせて描く。
+   こうしないとタブの大きさで形が潰れる。 */
+function kalimbaIcon(c, S) {
+  const g = c.createLinearGradient(0, 0, 0, S);
+  g.addColorStop(0, '#e5c49d'); g.addColorStop(0.55, '#d0a473'); g.addColorStop(1, '#b3824f');
+  c.fillStyle = g; rr(c, 0, 0, S, S, S * 0.22); c.fill();
+
+  if (S <= 32) {
+    const w   = Math.max(2, Math.round(S * 0.18));
+    const gap = Math.max(1, Math.round(S * 0.08));
+    const x0  = Math.round((S - (w * 3 + gap * 2)) / 2);
+    const top = Math.round(S * 0.34);
+    c.fillStyle = '#28323f';
+    [0.30, 0.44, 0.30].forEach((hr, i) => {
+      c.fillRect(x0 + i * (w + gap), top, w, Math.round(hr * S));
+    });
+    c.fillStyle = '#8a6135';
+    c.fillRect(Math.round(S * 0.12), Math.round(S * 0.18), Math.round(S * 0.76),
+               Math.max(2, Math.round(S * 0.14)));
+    return;
+  }
+
+  const n = 5, span = 0.62, gap = 0.042, maxH = 0.44, step = 0.065, top = 0.26;
+  const w = (span * S - gap * S * (n - 1)) / n;
+  const x0 = S * 0.5 - span * S / 2, mid = (n - 1) / 2;
+  c.fillStyle = '#28323f';
+  for (let i = 0; i < n; i++) {
+    const h = (maxH - Math.abs(i - mid) * step) * S;
+    rr(c, x0 + i * (w + gap * S), top * S, w, h, [0, 0, w / 2, w / 2]); c.fill();
+  }
+  const bg = c.createLinearGradient(0, S * 0.16, 0, S * 0.245);
+  bg.addColorStop(0, '#a8783f'); bg.addColorStop(1, '#7d5628');
+  c.fillStyle = bg; rr(c, S * 0.12, S * 0.16, S * 0.76, S * 0.085, S * 0.042); c.fill();
+  c.beginPath(); c.arc(S * 0.5, S * 0.835, S * 0.075, 0, Math.PI * 2);
+  c.fillStyle = '#6d4b27'; c.fill();
+}
+
+/* ホーム画面用。OS が丸く切り抜くので、角まで木で埋めて絵は中央 70% に収める */
+function kalimbaMaskable(c, S) {
+  const g = c.createLinearGradient(0, 0, 0, S);
+  g.addColorStop(0, '#e5c49d'); g.addColorStop(0.55, '#d0a473'); g.addColorStop(1, '#b3824f');
+  c.fillStyle = g; c.fillRect(0, 0, S, S);
+  const inner = Math.round(S * 0.70), off = Math.round((S - inner) / 2);
+  const t = document.createElement('canvas'); t.width = t.height = inner;
+  kalimbaIcon(t.getContext('2d'), inner);
+  c.drawImage(t, off, off);
+}
+
+const FILES = [
+  { name: 'icon-512.png',          size: 512, fn: kalimbaIcon },
+  { name: 'icon-192.png',          size: 192, fn: kalimbaIcon },
+  { name: 'apple-touch-icon.png',  size: 180, fn: kalimbaIcon },
+  { name: 'favicon-48.png',        size: 48,  fn: kalimbaIcon },
+  { name: 'favicon-32.png',        size: 32,  fn: kalimbaIcon },
+  { name: 'favicon-16.png',        size: 16,  fn: kalimbaIcon },
+  { name: 'icon-maskable-512.png', size: 512, fn: kalimbaMaskable }
+];
+
+const host = document.getElementById('preview');
+[[512, 130], [180, 90], [48, 70], [32, 70], [16, 70]].forEach(([S, disp]) => {
+  const box = document.createElement('div');
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  kalimbaIcon(cv.getContext('2d'), S);
+  cv.style.width = cv.style.height = disp + 'px';
+  if (S < 64) cv.className = 'px';
+  const cap = document.createElement('div');
+  cap.className = 'cap'; cap.textContent = S + 'px';
+  box.appendChild(cv); box.appendChild(cap); host.appendChild(box);
+});
+
+document.getElementById('dl').addEventListener('click', () => {
+  FILES.forEach((f, i) => {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = f.size;
+    f.fn(cv.getContext('2d'), f.size);
+    cv.toBlob(b => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(b);
+      a.download = f.name;
+      /* まとめて押すとブラウザに止められることがあるので少しずらす */
+      setTimeout(() => { a.click(); URL.revokeObjectURL(a.href); }, i * 250);
+    }, 'image/png');
+  });
+});
+</script>
+</body>
+</html>
