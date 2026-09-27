@@ -1,5 +1,5 @@
 {
-  // Cloudflare Workers（静的アセット配信）の設定。
+  // Cloudflare Workers の設定。
   // Workers Builds が main への push を受けて `npx wrangler deploy` を実行し、
   // このファイルを読んでデプロイします。
   //
@@ -7,13 +7,34 @@
   "name": "kalimba-score",
   "compatibility_date": "2026-09-26",
 
+  // かんたんアカウント（ログイン・曲の保存）を受け持つスクリプト。
+  // 受け持つのは /api/... だけで、それ以外は public/ の中身がそのまま配られます。
+  "main": "./src/index.js",
+
   // 公開するのは public/ の中だけです。
   // README.md や server.js、.git などは配信されません。
   "assets": {
     "directory": "./public",
+    "binding": "ASSETS",
 
     // 練習画面は /practice という URL にしています。
     // 実体のないパスなので、見つからないときは index.html を返させます。
-    "not_found_handling": "single-page-application"
-  }
+    "not_found_handling": "single-page-application",
+
+    // /api/... だけは、静的ファイルより先にスクリプトへ回します。
+    // これがないと、上の single-page-application が先に効いて
+    // /api/... にも index.html が返ってしまいます。
+    "run_worker_first": ["/api/*"]
+  },
+
+  // 曲とアカウントの保存先。
+  // 作り方は README の「かんたんアカウント」を見てください。
+  //   npx wrangler kv namespace create KALIMBA
+  // で出てきた id を、下の "id" に貼り付けます。
+  "kv_namespaces": [
+    { "binding": "KV", "id": "ここに KV namespace の id を貼る" }
+  ]
+
+  // 新規登録の合言葉は、ソースに書かずに秘密として登録します。
+  //   npx wrangler secret put SIGNUP_CODE
 }

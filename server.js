@@ -1,6 +1,10 @@
 /* file:// でマイクが使えないとき用の、ごく小さなローカルサーバー。
    start.cmd をダブルクリックすると、このサーバー経由でページが開きます。
-   配信するのは、このフォルダの中のファイルだけです。 */
+   配信するのは、このフォルダの中のファイルだけです。
+
+   /api/... は本番と同じ src/index.js（Cloudflare Workers のスクリプト）を
+   そのまま動かします。保存先だけは本物の Workers KV ではなく、
+   .wrangler/dev-kv.json というファイルで代用しています。 */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -20,6 +24,88 @@ const TYPES = {
   '.svg':  'image/svg+xml'
 };
 
+/* ============================================================
+   ここから下の「開発用」は、本番（Cloudflare）では使われません
+   ============================================================ */
+
+/* Workers KV の代わり。中身はファイルに書き出して、再起動しても残るようにする */
+const KV_FILE = path.join(__dirname, '.wrangler', 'dev-kv.json');
+function kvLoad() {
+  try { return new Map(Object.entries(JSON.parse(fs.readFileSync(KV_FILE, 'utf8')))); }
+  catch (e) { return new Map(); }
+}
+function kvSave(m) {
+  try {
+    fs.mkdirSync(path.dirname(KV_FILE), { recursive: true });
+    fs.writeFileSync(KV_FILE, JSON.stringify(Object.fromEntries(m), null, 1));
+  } catch (e) { /* 開発用なので、保存できなくても続ける */ }
+}
+const kvMap = kvLoad();
+const devKV = {
+  async get(k, type) {
+    const e = kvMap.get(k);
+    if (!e) return null;
+    if (e.exp && Date.now() > e.exp) { kvMap.delete(k); return null; }
+    return type === 'json' ? JSON.parse(e.value) : e.value;
+  },
+  async put(k, value, opts) {
+    const o = opts || {};
+    kvMap.set(k, {
+      value: value,
+      metadata: o.metadata || null,
+      exp: o.expirationTtl ? Date.now() + o.expirationTtl * 1000 : 0
+    });
+    kvSave(kvMap);
+  },
+  async delete(k) { kvMap.delete(k); kvSave(kvMap); },
+  async list(opts) {
+    const prefix = (opts && opts.prefix) || '';
+    const keys = [...kvMap.keys()].filter(k => k.startsWith(prefix)).sort()
+      .map(k => ({ name: k, metadata: kvMap.get(k).metadata }));
+    return { keys: keys, list_complete: true, cursor: null };
+  }
+};
+
+/* 合言葉は .dev.vars から読む（なければ開発用の決め打ち） */
+function devSignupCode() {
+  try {
+    const m = fs.readFileSync(path.join(__dirname, '.dev.vars'), 'utf8')
+      .match(/^\s*SIGNUP_CODE\s*=\s*(.*)$/m);
+    if (m) return m[1].trim().replace(/^["']|["']$/g, '');
+  } catch (e) { /* なければ下の既定値 */ }
+  return 'kalimba-test';
+}
+
+let workerPromise = null;
+function loadWorker() {
+  if (!workerPromise) workerPromise = import('./src/index.js').then(m => m.default);
+  return workerPromise;
+}
+
+async function handleApi(req, res) {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  const request = new Request('http://localhost:' + PORT + req.url, {
+    method: req.method,
+    headers: req.headers,
+    body: chunks.length ? Buffer.concat(chunks) : undefined
+  });
+  const worker = await loadWorker();
+  const out = await worker.fetch(request, {
+    KV: devKV,
+    SIGNUP_CODE: devSignupCode(),
+    ASSETS: { fetch: () => new Response('not found', { status: 404 }) }
+  });
+  const headers = {};
+  out.headers.forEach((v, k) => { headers[k] = v; });
+  res.writeHead(out.status, headers);
+  res.end(Buffer.from(await out.arrayBuffer()));
+}
+
+/* ============================================================
+   ここまで開発用
+   ============================================================ */
+
 /* 拡張子のないパス（/practice など）用。ページ本体を返す */
 function serveIndex(res) {
   fs.readFile(path.join(ROOT, 'index.html'), (err, data) => {
@@ -31,6 +117,15 @@ function serveIndex(res) {
 
 http.createServer((req, res) => {
   let p = decodeURIComponent(url.parse(req.url).pathname);
+
+  if (p.indexOf('/api/') === 0) {
+    handleApi(req, res).catch(err => {
+      res.writeHead(500, { 'Content-Type': TYPES['.json'] });
+      res.end(JSON.stringify({ error: 'ローカルサーバー側の問題: ' + err.message }));
+    });
+    return;
+  }
+
   if (p === '/') p = '/index.html';
   const file = path.join(ROOT, p);
   if (!file.startsWith(ROOT)) { res.writeHead(403); res.end('forbidden'); return; }
@@ -50,6 +145,7 @@ http.createServer((req, res) => {
 }).listen(PORT, '127.0.0.1', () => {
   const at = 'http://localhost:' + PORT + '/';
   console.log('カリンバ楽譜メーカー: ' + at);
+  console.log('（クラウド保存の合言葉は .dev.vars の SIGNUP_CODE。既定は kalimba-test）');
   console.log('終了するにはこのウィンドウで Ctrl+C を押してください。');
   exec('start "" ' + at);
 });

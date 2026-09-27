@@ -21,7 +21,7 @@
   .bar .grp{display:flex;gap:6px;align-items:center}
   .bar .sep{width:1px;height:24px;background:var(--line)}
   label.f{font-size:12px;color:var(--muted);white-space:nowrap}
-  input[type=text],input[type=number],select{
+  input[type=text],input[type=password],input[type=number],select{
     font:inherit;padding:4px 7px;border:1px solid var(--line);border-radius:6px;background:#fff;color:inherit}
   input[type=text]{min-width:170px}
   input[type=number]{width:64px}
@@ -110,7 +110,9 @@
   .mhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:15px}
   .mrow{display:flex;gap:8px;align-items:center;margin-bottom:10px}
   .mrow.wrap{flex-wrap:wrap}
-  .mrow input[type=text]{flex:1;min-width:0}
+  /* display:flex が hidden 属性に勝ってしまうので、打ち消しておく */
+  .mrow[hidden]{display:none}
+  .mrow input[type=text],.mrow input[type=password]{flex:1;min-width:0}
   .list{border:1px solid var(--line);border-radius:8px;max-height:36vh;overflow:auto;margin-bottom:10px}
   .list .row{display:flex;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid #eef0f3}
   .list .row:last-child{border-bottom:0}
@@ -118,6 +120,16 @@
   .list .row .sub{font-size:11px;color:var(--muted);flex:none}
   .list .empty{padding:14px;text-align:center;color:var(--muted);font-size:12.5px}
   .note{font-size:11.5px;color:var(--muted);line-height:1.7;margin:0}
+  /* 曲パネルの中の区切り（この端末 / クラウド） */
+  .sect{border-top:1px solid var(--line);margin-top:2px;padding-top:12px}
+  .secthead{display:flex;justify-content:space-between;align-items:center;gap:8px;
+            margin-bottom:8px;font-size:13.5px}
+  .secthead .who{font-size:12px;color:var(--muted);text-align:right;min-width:0;
+                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #cloudList{max-height:26vh}
+  .msg{font-size:12px;margin:0 0 8px}
+  .msg.err{color:#b3261e}
+  .msg.ok{color:#146c2e}
 
   /* ---------- ノーツ練習画面 ---------- */
   .fall{position:fixed;inset:0;z-index:60;background:#0f1420;display:flex;flex-direction:column}
@@ -373,7 +385,48 @@ function writeAdmaxTag(tags) {
       <button class="pri" id="songSave">この名前で保存</button>
     </div>
     <div id="songList" class="list"></div>
-    <div class="mrow wrap">
+
+    <!-- かんたんアカウント（クラウド保存）。
+         /api/... は Cloudflare Workers の src/index.js が受け持ちます -->
+    <div class="sect">
+      <div class="secthead">
+        <b>☁ クラウドに保存</b>
+        <span class="who" id="acctWho"></span>
+      </div>
+
+      <div id="acctOut">
+        <div class="mrow wrap">
+          <input type="text" id="acctId" placeholder="ログインID" autocomplete="username">
+          <input type="password" id="acctPw" placeholder="パスワード" autocomplete="current-password">
+        </div>
+        <div class="mrow wrap" id="acctCodeRow" hidden>
+          <input type="text" id="acctCode" placeholder="合言葉（登録に必要）">
+        </div>
+        <div class="mrow wrap">
+          <button class="pri" id="acctLogin">ログイン</button>
+          <button id="acctRegister">新規登録</button>
+        </div>
+        <p class="note">
+          別の端末からも同じ曲を開けるようにするためのものです。
+          <b>パスワードを忘れると、中の曲は取り出せません</b>（問い合わせ先もありません）。
+          他のサービスと同じパスワードは使わないでください。
+          メールアドレスなどは一切集めていません。
+        </p>
+      </div>
+
+      <div id="acctIn" hidden>
+        <div class="mrow wrap">
+          <button class="pri" id="cloudSave">この名前でクラウドに保存</button>
+          <button id="cloudReload">一覧を読み直す</button>
+          <button id="acctLogout">ログアウト</button>
+        </div>
+        <div id="cloudList" class="list"></div>
+      </div>
+
+      <p class="msg" id="acctMsg" hidden></p>
+    </div>
+
+    <div class="sect mrow wrap">
       <button id="songNew">新規</button>
       <button id="songLink">🔗 リンクをコピー</button>
       <button id="songExport">JSONで書き出し</button>
