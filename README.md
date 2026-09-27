@@ -99,9 +99,10 @@ src/index.js   ← /api/... だけを受け持つ Cloudflare Workers のスク�
 Workers KV     ← アカウントと曲の保存先
 ```
 
-`wrangler.jsonc` の `run_worker_first: ["/api/*"]` で、`/api/...` だけを
-スクリプトに回しています。これがないと `not_found_handling` が先に効いて、
-`/api/...` にも `index.html` が返ってしまいます。
+`wrangler.jsonc` の `run_worker_first: ["/api/*", "/practice"]` で、この2つだけを
+スクリプトに回しています。これがないと静的ファイル側が先に応答してしまい、
+`/api/...` が API として動きません。
+（`/practice` は実体のないパスなので、スクリプトがトップの中身を返しています）
 
 KV のキーの形:
 
@@ -165,8 +166,8 @@ Workers も KV も「上限を超えたら、その種類の操作がエラー�
 課金が起きるのは Workers Paid（$5/月）に切り替えた場合だけです。
 
 また、サイト本体（HTML・JS・画像）は静的アセットなので
-「free and unlimited」でカウント対象外です。`run_worker_first` で `/api/*` だけを
-スクリプトに回しているため、上限に達しても**止まるのはクラウド保存だけ**で、
+「free and unlimited」でカウント対象外です。`run_worker_first` で `/api/*` と
+`/practice` だけをスクリプトに回しているため、上限に達しても**止まるのはクラウド保存だけ**で、
 楽譜づくり・ブラウザ内保存・URL共有・練習画面・広告はそのまま動きます。
 
 書き込みが起きるのは登録・ログイン成功・曲の保存のときだけで、
@@ -203,13 +204,35 @@ Workers も KV も「上限を超えたら、その種類の操作がエラー�
 | ファイル / 場所 | 何のため |
 |---|---|
 | `index.html` の `<title>` `<meta name="description">` | 検索結果に出る見出しと説明文 |
-| `<link rel="canonical" href="/">` | `/practice` や存在しないパスでも同じ HTML が返るので、正規の URL を「/」1つに寄せる。相対指定なのでドメインが変わってもそのまま |
+| `<link rel="canonical" href="/">` | `/practice` でも同じ HTML が返るので、正規の URL を「/」1つに寄せる。相対指定なのでドメインが変わってもそのまま |
 | OGP / `twitter:card` | LINE や X で共有したときの見え方 |
 | JSON-LD（`WebApplication`） | 検索エンジンに「無料の Web アプリ」だと伝える |
 | `.siteinfo`（楽譜の下の説明文） | クロールできる本文。`<h1>` もここ |
 | `public/robots.txt` | クロールの可否と、サイトマップの場所 |
 | `public/sitemap.xml` | `/` と `/about` の2ページ |
 | `about.html` の canonical / OGP | こちらは `/about` が正規 |
+| `public/404.html` | 存在しない URL は 404 で返します（`noindex` 付き） |
+
+### 存在しない URL の扱い
+
+以前は `not_found_handling: "single-page-application"` にしていたため、
+`/abc` でも `/xyz` でも **200 で `index.html`** が返っていました。
+検索エンジンからは「中身が同じページが無限にある」ように見えます（ソフト404）。
+
+いまはこうなっています。
+
+| URL | 返るもの |
+|---|---|
+| `/` `/about` など実在するファイル | そのファイル（200） |
+| `/practice` | `index.html`（200）。Worker が返しています |
+| それ以外 | `404.html`（**404**） |
+
+`/practice` だけは実体のあるファイルではないので、`run_worker_first` で
+スクリプトに回し、`env.ASSETS.fetch()` でトップの中身を返しています。
+`/index.html` ではなく `/` を取りに行くのは、Cloudflare が `/index.html` を
+`/` へ転送してしまうためです。
+
+`server.js` も同じ動きにしてあります。
 
 ### 気をつける点
 
@@ -234,7 +257,7 @@ canonical とサイトマップは転送先のほうを指しています。
   3. サイトマップに `sitemap.xml` を送信
   4. 「URL 検査」からトップページのインデックス登録をリクエスト
 - OGP 用の画像（`og:image`）。いまは画像なしなので、共有してもサムネイルは出ません
-- 存在しない URL を本物の 404 にすること（いまは 200 で index.html が返ります）
+- OGP 用の画像（`og:image`）
 
 ## 広告を入れる（忍者AD MAX）
 
