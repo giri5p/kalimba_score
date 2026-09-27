@@ -1658,12 +1658,232 @@ function shareUrl() {
   return location.origin + scorePath() + '#s=' + encodeScore();
 }
 
+/* ============================================================
+   18b. かんたんアカウント（クラウド保存）
+   ------------------------------------------------------------
+   別の端末からも同じ曲を開けるようにするための、ごく小さな仕組み。
+   /api/... は Cloudflare Workers 側（src/index.js）が受け持つ。
+
+   パスワードそのものは送らない。この端末の中で時間のかかる計算
+   （PBKDF2 を 15 万回）をして、その結果だけを送っている。
+   サーバー側は無料枠で 1 リクエスト CPU 10ms までなので、
+   重い計算をあちらに置けないため。
+   ============================================================ */
+const AUTH_KEY = 'kalimba-auth-v1';
+const PBKDF2_ROUNDS = 150000;
+let auth = null;          // {token, id}。ログインしていなければ null
+let cloudSongs = [];      // クラウドにある曲の一覧
+
+function authLoad() {
+  try { auth = JSON.parse(localStorage.getItem(AUTH_KEY)) || null; } catch (e) { auth = null; }
+  if (auth && !(auth.token && auth.id)) auth = null;
+}
+function authStore(v) {
+  auth = v;
+  try {
+    if (v) localStorage.setItem(AUTH_KEY, JSON.stringify(v));
+    else localStorage.removeItem(AUTH_KEY);
+  } catch (e) { /* 保存できなくても、この画面を閉じるまでは使える */ }
+}
+
+/* 塩にログインIDを混ぜているので、同じパスワードでも人ごとに別の値になる */
+async function derivePw(id, pw) {
+  const e = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', e.encode(pw), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: e.encode('kalimba-score:' + id),
+      iterations: PBKDF2_ROUNDS, hash: 'SHA-256' }, key, 256);
+  return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function apiCall(path, opts) {
+  const o = Object.assign({}, opts || {});
+  o.headers = Object.assign({}, o.headers);
+  if (auth) o.headers.authorization = 'Bearer ' + auth.token;
+  if (o.body !== undefined && typeof o.body !== 'string') {
+    o.headers['content-type'] = 'application/json';
+    o.body = JSON.stringify(o.body);
+  }
+  let res;
+  try { res = await fetch(path, o); }
+  catch (e) { throw new Error('つながりませんでした。通信の状態を確かめてください。'); }
+  let body = {};
+  try { body = await res.json(); } catch (e) { /* 本文がないこともある */ }
+  if (!res.ok) {
+    /* 期限切れなどでログイン状態が切れていたら、こちらも忘れる */
+    if (res.status === 401 && auth) { authStore(null); renderAccount(); }
+    const err = new Error(body.error || ('うまくいきませんでした（' + res.status + '）'));
+    err.status = res.status;
+    throw err;
+  }
+  return body;
+}
+
+/* ---------- 画面 ---------- */
+function acctMsg(text, kind) {
+  const p = document.getElementById('acctMsg');
+  if (!p) return;
+  p.textContent = text || '';
+  p.className = 'msg' + (kind ? ' ' + kind : '');
+  p.hidden = !text;
+}
+function acctBusy(on) {
+  ['acctLogin', 'acctRegister', 'acctLogout', 'cloudSave', 'cloudReload'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.disabled = on;
+  });
+}
+function renderAccount() {
+  const out = document.getElementById('acctOut');
+  const inn = document.getElementById('acctIn');
+  const who = document.getElementById('acctWho');
+  if (!out || !inn) return;
+  const on = !!auth;
+  out.hidden = on;
+  inn.hidden = !on;
+  who.textContent = on ? auth.id + ' でログイン中' : '';
+  if (on) renderCloudList();
+}
+
+/* 日付は「9/27」くらいの粗さで十分 */
+function shortDate(ms) {
+  if (!ms) return '';
+  const d = new Date(ms);
+  return (d.getMonth() + 1) + '/' + d.getDate();
+}
+
+function renderCloudList() {
+  const host = document.getElementById('cloudList');
+  if (!host) return;
+  host.innerHTML = '';
+  if (!cloudSongs.length) {
+    const e = document.createElement('div');
+    e.className = 'empty';
+    e.textContent = 'クラウドにはまだ曲がありません。上の欄に名前を入れて「この名前でクラウドに保存」。';
+    host.appendChild(e);
+    return;
+  }
+  cloudSongs.forEach(song => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = '<span class="nm"></span><span class="sub"></span>';
+    row.querySelector('.nm').textContent = song.name;
+    row.querySelector('.sub').textContent = song.notes + '音・' + shortDate(song.updated);
+    const open = document.createElement('button');
+    open.textContent = '開く';
+    open.addEventListener('click', () => cloudOpen(song.name));
+    const del = document.createElement('button');
+    del.textContent = '削除';
+    del.addEventListener('click', () => cloudDelete(song.name));
+    row.appendChild(open);
+    row.appendChild(del);
+    host.appendChild(row);
+  });
+}
+
+/* ---------- 操作 ---------- */
+async function acctSubmit(kind) {
+  const id = document.getElementById('acctId').value.trim();
+  const pw = document.getElementById('acctPw').value;
+  const codeRow = document.getElementById('acctCodeRow');
+  const code = document.getElementById('acctCode').value.trim();
+
+  if (!id || !pw) { acctMsg('ログインIDとパスワードを入れてください。', 'err'); return; }
+
+  acctBusy(true);
+  acctMsg(kind === 'register' ? '登録しています…' : 'ログインしています…');
+  try {
+    const body = { id: id, pw: await derivePw(id, pw) };
+    if (kind === 'register' && code) body.code = code;
+    const r = await apiCall('/api/' + kind, { method: 'POST', body: body });
+    authStore({ token: r.token, id: r.id });
+    document.getElementById('acctPw').value = '';
+    document.getElementById('acctCode').value = '';
+    codeRow.hidden = true;
+    renderAccount();
+    await cloudReload();
+    acctMsg(r.id + ' でログインしました。', 'ok');
+  } catch (e) {
+    /* ふだんは誰でも登録できるが、合言葉制にしてあるときだけ欄を出す */
+    if (e.status === 403) codeRow.hidden = false;
+    acctMsg(e.message, 'err');
+  } finally {
+    acctBusy(false);
+  }
+}
+
+async function acctLogout() {
+  try { await apiCall('/api/logout', { method: 'POST' }); } catch (e) { /* 手元だけでも切る */ }
+  authStore(null);
+  cloudSongs = [];
+  renderAccount();
+  acctMsg('ログアウトしました。', 'ok');
+}
+
+async function cloudReload() {
+  if (!auth) return;
+  try {
+    const r = await apiCall('/api/songs');
+    cloudSongs = r.songs || [];
+  } catch (e) { cloudSongs = []; acctMsg(e.message, 'err'); }
+  renderCloudList();
+}
+
+async function cloudSave() {
+  if (!auth) return;
+  const name = document.getElementById('songName').value.trim() || state.title || '無題の曲';
+  if (cloudSongs.some(x => x.name === name) &&
+      !confirm('クラウドの「' + name + '」を上書きしますか？')) return;
+  acctBusy(true);
+  acctMsg('保存しています…');
+  try {
+    await apiCall('/api/songs', { method: 'PUT', body: { name: name, data: serialize() } });
+    state.title = name;
+    document.getElementById('title').value = name;
+    autosave();
+    syncPanel();
+    await cloudReload();
+    acctMsg('クラウドに「' + name + '」を保存しました。', 'ok');
+  } catch (e) { acctMsg(e.message, 'err'); }
+  finally { acctBusy(false); }
+}
+
+async function cloudOpen(name) {
+  acctBusy(true);
+  acctMsg('読み込んでいます…');
+  try {
+    const r = await apiCall('/api/songs?name=' + encodeURIComponent(name));
+    pushUndo();
+    deserialize(r.data);
+    syncInputs();
+    buildTines();
+    refresh();
+    acctMsg(null);
+    closeSongs();
+  } catch (e) { acctMsg('開けませんでした: ' + e.message, 'err'); }
+  finally { acctBusy(false); }
+}
+
+async function cloudDelete(name) {
+  if (!confirm('クラウドの「' + name + '」を削除しますか？')) return;
+  acctBusy(true);
+  try {
+    await apiCall('/api/songs?name=' + encodeURIComponent(name), { method: 'DELETE' });
+    await cloudReload();
+    acctMsg('クラウドの「' + name + '」を削除しました。', 'ok');
+  } catch (e) { acctMsg(e.message, 'err'); }
+  finally { acctBusy(false); }
+}
+
 /* ---------- 曲パネル ---------- */
 function openSongs() {
   document.getElementById('songUrl').hidden = true;
   document.getElementById('songName').value = state.title;
   renderSongList();
+  acctMsg(null);
+  renderAccount();
   document.getElementById('songs').hidden = false;
+  if (auth) cloudReload();      // 開くたびに最新の一覧をとり直す
 }
 function closeSongs() { document.getElementById('songs').hidden = true; }
 
@@ -2497,6 +2717,15 @@ function bindUi() {
   $('btnPng').addEventListener('click', () => { exportPng(); blurAll(); });
   $('btnPrint').addEventListener('click', () => { closeSongs(); blurAll(); setTimeout(() => window.print(), 60); });
   $('songImport').addEventListener('click', () => $('file').click());
+  $('acctLogin').addEventListener('click', () => acctSubmit('login'));
+  $('acctRegister').addEventListener('click', () => acctSubmit('register'));
+  $('acctLogout').addEventListener('click', () => acctLogout());
+  $('cloudSave').addEventListener('click', () => cloudSave());
+  $('cloudReload').addEventListener('click', () => cloudReload());
+  /* パスワード欄で Enter を押したらログイン */
+  $('acctPw').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); acctSubmit('login'); }
+  });
   $('btnMenu').addEventListener('click', () => {
     document.body.classList.toggle('menuopen');
     $('btnMenu').classList.toggle('on', document.body.classList.contains('menuopen'));
@@ -2609,6 +2838,7 @@ function syncModeButtons() {
 
 function boot() {
   bindUi();
+  authLoad();
   if (!loadFromHash()) {                    // URL に曲が入っていればそれを開く
     try {
       const saved = localStorage.getItem(STORE_KEY);

@@ -4,6 +4,9 @@ gakuhu/
 # wrangler のローカル作業用フォルダ
 .wrangler/
 
+# ローカルで wrangler dev を動かすときの秘密（合言葉など）
+.dev.vars
+
 # OS が作るファイル
 Thumbs.db
 desktop.ini
