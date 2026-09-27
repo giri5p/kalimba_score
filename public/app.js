@@ -1089,7 +1089,9 @@ function play(startAt, leadIn, fromTime) {
   }
   const endT = list.reduce((m, e) =>
     Math.max(m, e.t + Math.max(e.dur, e.durs.length ? Math.max.apply(null, e.durs) : 0)), 0);
-  stopAt = setTimeout(stop, (endT - offset + 0.4) * 1000);
+  /* leadIn のぶん鳴り始めが遅れるので、止める時刻もその分うしろにずらす。
+     入れ忘れると、練習画面で曲の最後 leadIn 秒ぶんが切れてしまう */
+  stopAt = setTimeout(stop, (endT - offset + 0.4 + (leadIn || 0)) * 1000);
 
   /* シークバーは音の時計に合わせて毎フレーム描き直す */
   playInfo = { list: list, t0: t0, offset: offset, k: 0, line: -1 };
