@@ -1,0 +1,10 @@
+# カリンバ楽譜メーカー
+User-agent: *
+Allow: /
+
+# 中身のない窓口と、広告だけのページはクロール不要
+Disallow: /api/
+Disallow: /ad-frame
+Disallow: /ad-frame.html
+
+Sitemap: https://kalimba-score.hinauzer.workers.dev/sitemap.xml

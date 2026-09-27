@@ -3,7 +3,33 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>カリンバ楽譜メーカー</title>
+<title>カリンバ楽譜メーカー｜ドレミ・数字譜つきの楽譜を無料でつくる</title>
+<meta name="description" content="カリンバ（親指ピアノ）用の楽譜を作れる無料のページです。音符の下にドレミ・カリンバの数字（1 2 3）・音名（C D E）を並べて表示するので、五線譜が読めなくても弾けます。印刷・リンク共有・練習モードつき。">
+<!-- /practice や存在しないパスでも同じ HTML が返るので、正規の URL は「/」だと伝える。
+     相対指定にしておけば、ドメインが変わってもそのまま使えます -->
+<link rel="canonical" href="/">
+<meta name="theme-color" content="#2f6fed">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="カリンバ楽譜メーカー">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:url" content="https://kalimba-score.hinauzer.workers.dev/">
+<meta property="og:title" content="カリンバ楽譜メーカー｜ドレミ・数字譜つきの楽譜を無料でつくる">
+<meta property="og:description" content="カリンバ（親指ピアノ）用の楽譜を作れる無料のページです。音符の下にドレミ・カリンバの数字（1 2 3）・音名（C D E）を並べて表示するので、五線譜が読めなくても弾けます。印刷・リンク共有・練習モードつき。">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "カリンバ楽譜メーカー",
+  "applicationCategory": "MultimediaApplication",
+  "operatingSystem": "Web",
+  "inLanguage": "ja",
+  "url": "https://kalimba-score.hinauzer.workers.dev/",
+  "isAccessibleForFree": true,
+  "description": "カリンバ（親指ピアノ）用の楽譜を作れる無料のページです。音符の下にドレミ・カリンバの数字（1 2 3）・音名（C D E）を並べて表示するので、五線譜が読めなくても弾けます。印刷・リンク共有・練習モードつき。",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "JPY" }
+}
+</script>
 <style>
   :root{
     --bg:#eceef2; --chrome:#ffffff; --ink:#1c2024; --muted:#6b7280;
@@ -54,6 +80,16 @@
   .adbox{text-align:center;overflow:hidden}
   .adbox:not(:empty){margin:16px 0}
   #ad:not(:empty){margin:0 0 16px}      /* 楽譜の上の枠は、上の余白はいらない */
+  /* 楽譜の下に置く、このページの説明。
+     検索から来た人と、検索エンジンの両方に向けた本文です。
+     スクロールしないと見えない位置なので、編集の邪魔にはなりません */
+  .siteinfo{max-width:760px;margin:18px auto 0;padding:16px 18px;
+            background:var(--chrome);border:1px solid var(--line);border-radius:10px;
+            font-size:13px;line-height:1.9;color:#39404a}
+  .siteinfo h1{font-size:15px;margin:0 0 8px;color:var(--ink)}
+  .siteinfo p{margin:0 0 8px}
+  .siteinfo p:last-child{margin-bottom:0}
+  .siteinfo a{color:var(--accent)}
   .sitefoot{text-align:center;padding:12px 0 2px;font-size:12px}
   .sitefoot a{color:var(--muted)}
   .sitefoot a:hover{color:var(--accent)}
@@ -236,7 +272,7 @@
     #sheet{box-shadow:none;max-width:none;padding:0}
     #score svg{width:100%!important;height:auto!important}
     #score .cursor,#score .seek{display:none}
-    .sitefoot,.adbox,.admodal{display:none}
+    .sitefoot,.adbox,.admodal,.siteinfo{display:none}
   }
   @page{size:A4 portrait;margin:12mm}
 </style>
@@ -484,6 +520,21 @@ function writeAdmaxTag(tags) {
       <!-- admax -->
     </div>
     <!-- ▲▲▲ 広告枠 2 ここまで ▲▲▲ -->
+
+    <!-- このページの説明。検索から来た人向けの本文でもあります -->
+    <section class="siteinfo">
+      <h1>カリンバ用の楽譜を、ドレミつきで作れるページ</h1>
+      <p>カリンバ（親指ピアノ）で弾くための楽譜を作れる無料のページです。
+      音符の下に<b>ドレミ</b>・<b>カリンバの数字（1 2 3）</b>・<b>音名（C D E）</b>の3つを
+      並べて表示するので、五線譜が読めなくても弾けます。
+      キーの数は 17キー・21キーなどから選べます。</p>
+      <p>作った楽譜は、この端末に保存したり、<b>リンクにしてスマホへ送ったり</b>、
+      ログインして<b>クラウドに保存</b>したりできます。印刷や PNG 書き出しもできます。
+      音ゲーのように<b>ノーツが上から降ってくる</b><a href="practice">練習モード</a>もあります。</p>
+      <p>音楽の知識がない人間が、自分と初心者のために作ったものです。
+      半音（♯ ♭）や複雑な楽譜は扱えません。くわしくは
+      <a href="about.html">このサイトについて</a>をご覧ください。</p>
+    </section>
 
     <div class="sitefoot">
       <a href="about.html">このサイトについて</a>

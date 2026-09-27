@@ -1,4 +1,4 @@
-# Cloudflare Pages 用の配信設定
+# Cloudflare の配信設定（キャッシュ）
 /*
   Cache-Control: public, max-age=0, must-revalidate
 

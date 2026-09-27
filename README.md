@@ -194,6 +194,48 @@ Workers も KV も「上限を超えたら、その種類の操作がエラー�
 - 音符の書き換えはできません（画面を触っても譜面は変わりません）
 - 音符をタップして **▶ ここから** を押せば、その場所から再生できます
 
+## 検索（Google）にのせる
+
+公開先: **https://kalimba-score.hinauzer.workers.dev/**
+
+### 入れてあるもの
+
+| ファイル / 場所 | 何のため |
+|---|---|
+| `index.html` の `<title>` `<meta name="description">` | 検索結果に出る見出しと説明文 |
+| `<link rel="canonical" href="/">` | `/practice` や存在しないパスでも同じ HTML が返るので、正規の URL を「/」1つに寄せる。相対指定なのでドメインが変わってもそのまま |
+| OGP / `twitter:card` | LINE や X で共有したときの見え方 |
+| JSON-LD（`WebApplication`） | 検索エンジンに「無料の Web アプリ」だと伝える |
+| `.siteinfo`（楽譜の下の説明文） | クロールできる本文。`<h1>` もここ |
+| `public/robots.txt` | クロールの可否と、サイトマップの場所 |
+| `public/sitemap.xml` | `/` と `/about` の2ページ |
+| `about.html` の canonical / OGP | こちらは `/about` が正規 |
+
+### 気をつける点
+
+**`document.title` を毎回書き換えないこと。**
+以前は `document.title = 曲名 + ' - カリンバ楽譜'` を無条件に実行していたため、
+Google（JS を実行してから見る）からは「無題の曲 - カリンバ楽譜」というページに見えていました。
+いまは**曲に名前が付いているときだけ**書き換え、それ以外は `SITE_TITLE`（`app.js` の先頭）に戻します。
+`index.html` の `<title>` を変えるときは、`SITE_TITLE` も一緒に変えてください。
+
+`.html` は Cloudflare の既定で拡張子なしへ転送されます（`/about.html` → 307 → `/about`）。
+canonical とサイトマップは転送先のほうを指しています。
+`server.js` も同じ形にしてあるので、手元と本番で URL の見え方が揃います。
+
+独自ドメインに移すときは **`robots.txt` と `sitemap.xml` と OGP の `og:url`** を書き換えてください
+（canonical は相対指定なので、そのままで大丈夫です）。
+
+### まだやっていないこと
+
+- **Google Search Console への登録とサイトマップ送信**（サイトの持ち主しかできません）
+  1. https://search.google.com/search-console で URL プレフィックスとして上の URL を登録
+  2. 所有権の確認（HTML ファイルを置く方式なら、ファイルを `public/` に入れれば配信されます）
+  3. サイトマップに `sitemap.xml` を送信
+  4. 「URL 検査」からトップページのインデックス登録をリクエスト
+- OGP 用の画像（`og:image`）。いまは画像なしなので、共有してもサムネイルは出ません
+- 存在しない URL を本物の 404 にすること（いまは 200 で index.html が返ります）
+
 ## 広告を入れる（忍者AD MAX）
 
 枠は **3 つ**あります（うち 2 つが `public/index.html`）。

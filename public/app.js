@@ -8,6 +8,9 @@
    （読んだかどうかは、この文字列そのものを覚えておく形で判定しています） */
 const APP_VERSION = '2026-09-27';
 
+/* index.html の <title> と同じもの。曲名が付いていないときはこれに戻す */
+const SITE_TITLE = 'カリンバ楽譜メーカー｜ドレミ・数字譜つきの楽譜を無料でつくる';
+
 /* ============================================================
    1. 音階まわりの基礎データ
    ------------------------------------------------------------
@@ -921,7 +924,12 @@ function syncPanel() {
   document.getElementById('sheetTitle').textContent = state.title;
   document.getElementById('sheetMeta').textContent =
     '♩= ' + state.tempo + '　' + state.beats + '/' + state.beatValue + '　' + P().label;
-  document.title = state.title + ' - カリンバ楽譜';
+  /* 曲に名前が付いていないうちは、ページ本来のタイトルのままにしておく。
+     ここで毎回書き換えていたせいで、検索エンジンからは
+     「無題の曲 - カリンバ楽譜」というページに見えていた */
+  document.title = (state.title && state.title !== '無題の曲')
+    ? state.title + '｜カリンバ楽譜メーカー'
+    : SITE_TITLE;
 }
 
 function buildDurPalette() {
