@@ -265,8 +265,12 @@
     .settings input[type=text]{min-width:0;flex:1}
     .settings .grp:first-child{width:100%}
     .chk{font-size:12px}
-    #paper{padding:8px 4px 14px}
-    #sheet{padding:8px 2px 4px;border-radius:0;box-shadow:none}
+    /* 広告は 320px 幅で届く。左右に余白があると狭い端末で右が切れるので、
+       #paper の横余白をゼロにして、楽譜や説明文の側に戻す */
+    #paper{padding:8px 0 14px}
+    #sheet{padding:8px 2px 4px;border-radius:0;box-shadow:none;width:auto;margin:0 4px}
+    .siteinfo{margin-left:4px;margin-right:4px}
+    .sitefoot{padding-left:4px;padding-right:4px}
     #sheetTitle{font-size:16px}
     #sheetMeta{font-size:11px;margin-bottom:4px}
     #score .hit{cursor:default}
@@ -275,6 +279,11 @@
     .modal{padding:0}
     .modal .box{border-radius:0;max-height:100vh;height:100%}
     .modal .box.tut{height:auto}
+    /* 広告モーダルも同じ理由で、横の余白は文字とボタンにだけ付ける */
+    .admodal{padding:8px 0}
+    .admodal .box{padding:14px 0;border-radius:0}
+    .admodal .cap{padding:0 12px}
+    .admodal .foot{padding:0 12px}
   }
 
   @media print{
