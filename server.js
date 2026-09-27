@@ -21,7 +21,9 @@ const TYPES = {
   '.css':  'text/css; charset=utf-8',
   '.gif':  'image/gif',
   '.png':  'image/png',
-  '.svg':  'image/svg+xml'
+  '.svg':  'image/svg+xml',
+  '.txt':  'text/plain; charset=utf-8',
+  '.xml':  'application/xml; charset=utf-8'
 };
 
 /* ============================================================
@@ -107,12 +109,22 @@ async function handleApi(req, res) {
    ここまで開発用
    ============================================================ */
 
-/* 拡張子のないパス（/practice など）用。ページ本体を返す */
-function serveIndex(res) {
-  fs.readFile(path.join(ROOT, 'index.html'), (err, data) => {
-    if (err) { res.writeHead(404); res.end('not found'); return; }
+function sendHtml(res, file, onMissing) {
+  fs.readFile(file, (err, data) => {
+    if (err) { onMissing(); return; }
     res.writeHead(200, { 'Content-Type': TYPES['.html'], 'Cache-Control': 'no-store' });
     res.end(data);
+  });
+}
+
+/* 拡張子のないパスの扱い。本番（Cloudflare）に合わせて
+   まず「そのパス + .html」を探し、無ければ index.html を返す。
+   /about → about.html、/practice → index.html（練習画面）になります */
+function serveExtensionless(res, file) {
+  sendHtml(res, file + '.html', () => {
+    sendHtml(res, path.join(ROOT, 'index.html'), () => {
+      res.writeHead(404); res.end('not found');
+    });
   });
 }
 
@@ -132,9 +144,7 @@ http.createServer((req, res) => {
   if (!file.startsWith(ROOT)) { res.writeHead(403); res.end('forbidden'); return; }
   fs.readFile(file, (err, data) => {
     if (err) {
-      /* /practice のような拡張子なしのパスは index.html を返す。
-         本番（Cloudflare）でも not_found_handling で同じことをしています */
-      if (!path.extname(file)) { serveIndex(res); return; }
+      if (!path.extname(file)) { serveExtensionless(res, file); return; }
       res.writeHead(404); res.end('not found'); return;
     }
     res.writeHead(200, {
