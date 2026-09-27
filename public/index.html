@@ -85,6 +85,11 @@
          padding:18px 10px 10px;width:100%}
   /* 広告枠。タグを貼るまでは高さ 0 で、レイアウトに影響しない */
   .adbox{text-align:center;overflow:hidden}
+  /* 配信されてくる広告が、タグの宣言サイズより大きいことがある。
+     はみ出したぶんを切ると読めなくなるので、幅に合わせて縮める */
+  .adbox img{max-width:100%;height:auto}
+  .adbox iframe,.adbox embed,.adbox object,.adbox video{max-width:100%}
+  .adbox > div,.adbox ins,.adbox a{max-width:100%}
   .adbox:not(:empty){margin:16px 0}
   #ad:not(:empty){margin:0 0 16px}      /* 楽譜の上の枠は、上の余白はいらない */
   /* 楽譜の下に置く、このページの説明。
@@ -204,8 +209,8 @@
   .admodal .box{background:#151c2b;border:1px solid #2b3446;border-radius:10px;
                 padding:16px;max-width:100%;display:flex;flex-direction:column;align-items:center}
   .admodal .cap{color:#7d8ba3;font-size:11px;margin:0 0 8px;align-self:flex-start}
-  .admodal .slot{overflow:hidden}
-  .admodal .slot iframe{border:0;display:block}
+  .admodal .slot{overflow:hidden;max-width:100%}
+  .admodal .slot iframe{border:0;display:block;max-width:100%}
   .admodal .foot{margin-top:24px}         /* 広告と閉じるボタンの間隔 */
   .admodal .foot button{min-width:220px;min-height:46px;font-size:15px;
                         background:var(--accent);border-color:var(--accent);color:#fff}
