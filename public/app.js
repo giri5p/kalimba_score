@@ -1712,7 +1712,9 @@ async function apiCall(path, opts) {
   if (!res.ok) {
     /* 期限切れなどでログイン状態が切れていたら、こちらも忘れる */
     if (res.status === 401 && auth) { authStore(null); renderAccount(); }
-    throw new Error(body.error || ('うまくいきませんでした（' + res.status + '）'));
+    const err = new Error(body.error || ('うまくいきませんでした（' + res.status + '）'));
+    err.status = res.status;
+    throw err;
   }
   return body;
 }
@@ -1786,19 +1788,13 @@ async function acctSubmit(kind) {
   const codeRow = document.getElementById('acctCodeRow');
   const code = document.getElementById('acctCode').value.trim();
 
-  if (kind === 'register' && codeRow.hidden) {   // まず合言葉の欄を出す
-    codeRow.hidden = false;
-    acctMsg('新規登録には合言葉が必要です。サイトを作った人に聞いてください。');
-    return;
-  }
   if (!id || !pw) { acctMsg('ログインIDとパスワードを入れてください。', 'err'); return; }
-  if (kind === 'register' && !code) { acctMsg('合言葉を入れてください。', 'err'); return; }
 
   acctBusy(true);
   acctMsg(kind === 'register' ? '登録しています…' : 'ログインしています…');
   try {
     const body = { id: id, pw: await derivePw(id, pw) };
-    if (kind === 'register') body.code = code;
+    if (kind === 'register' && code) body.code = code;
     const r = await apiCall('/api/' + kind, { method: 'POST', body: body });
     authStore({ token: r.token, id: r.id });
     document.getElementById('acctPw').value = '';
@@ -1808,6 +1804,8 @@ async function acctSubmit(kind) {
     await cloudReload();
     acctMsg(r.id + ' でログインしました。', 'ok');
   } catch (e) {
+    /* ふだんは誰でも登録できるが、合言葉制にしてあるときだけ欄を出す */
+    if (e.status === 403) codeRow.hidden = false;
     acctMsg(e.message, 'err');
   } finally {
     acctBusy(false);

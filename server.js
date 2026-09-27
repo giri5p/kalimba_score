@@ -66,14 +66,15 @@ const devKV = {
   }
 };
 
-/* 合言葉は .dev.vars から読む（なければ開発用の決め打ち） */
+/* 合言葉は .dev.vars の SIGNUP_CODE から読む。
+   書いていなければ本番と同じく「誰でも登録できる」状態になる */
 function devSignupCode() {
   try {
     const m = fs.readFileSync(path.join(__dirname, '.dev.vars'), 'utf8')
       .match(/^\s*SIGNUP_CODE\s*=\s*(.*)$/m);
     if (m) return m[1].trim().replace(/^["']|["']$/g, '');
-  } catch (e) { /* なければ下の既定値 */ }
-  return 'kalimba-test';
+  } catch (e) { /* 無ければ合言葉なし */ }
+  return '';
 }
 
 let workerPromise = null;
@@ -145,7 +146,7 @@ http.createServer((req, res) => {
 }).listen(PORT, '127.0.0.1', () => {
   const at = 'http://localhost:' + PORT + '/';
   console.log('カリンバ楽譜メーカー: ' + at);
-  console.log('（クラウド保存の合言葉は .dev.vars の SIGNUP_CODE。既定は kalimba-test）');
+  console.log('（新規登録に合言葉を要求したいときは .dev.vars に SIGNUP_CODE を書く）');
   console.log('終了するにはこのウィンドウで Ctrl+C を押してください。');
   exec('start "" ' + at);
 });

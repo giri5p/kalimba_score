@@ -88,9 +88,11 @@ async function register(req, env) {
   const b = await readJson(req);
   if (!b) return bad('送信された内容を読み取れませんでした');
 
+  /* ふだんは誰でも登録できる。
+     いたずらされたときだけ、秘密 SIGNUP_CODE を登録すれば合言葉制になる。
+     （コードを直さずに閉じられるようにしてある） */
   const code = env.SIGNUP_CODE;
-  if (!code) return bad('いまは新規登録を受け付けていません', 503);
-  if (b.code !== code) return bad('合言葉がちがいます', 403);
+  if (code && b.code !== code) return bad('いまは新規登録に合言葉が必要です', 403);
 
   const id = textField(b.id, MAX_ID);
   if (!id) return bad('ログインIDを入れてください（' + MAX_ID + '文字まで）');
