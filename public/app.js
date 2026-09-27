@@ -2,6 +2,12 @@
 (function () {
 'use strict';
 
+/* サイトの版。
+   ここを書き換えると、すでに読んだ人にも使い方モーダルがもう一度出ます。
+   機能を足したときや説明を直したときに、日付を今日にしてください。
+   （読んだかどうかは、この文字列そのものを覚えておく形で判定しています） */
+const APP_VERSION = '2026-09-27';
+
 /* ============================================================
    1. 音階まわりの基礎データ
    ------------------------------------------------------------
@@ -1089,7 +1095,9 @@ function play(startAt, leadIn, fromTime) {
   }
   const endT = list.reduce((m, e) =>
     Math.max(m, e.t + Math.max(e.dur, e.durs.length ? Math.max.apply(null, e.durs) : 0)), 0);
-  stopAt = setTimeout(stop, (endT - offset + 0.4) * 1000);
+  /* leadIn のぶん鳴り始めが遅れるので、止める時刻もその分うしろにずらす。
+     入れ忘れると、練習画面で曲の最後 leadIn 秒ぶんが切れてしまう */
+  stopAt = setTimeout(stop, (endT - offset + 0.4 + (leadIn || 0)) * 1000);
 
   /* シークバーは音の時計に合わせて毎フレーム描き直す */
   playInfo = { list: list, t0: t0, offset: offset, k: 0, line: -1 };
@@ -1810,6 +1818,7 @@ function syncMode() {
    はじめて開いた人向けに、6 ステップで一通りを説明する。
    あとからでも「❓ 使い方」でいつでも開ける。
    ============================================================ */
+/* 覚えておくのは「読んだかどうか」ではなく「どの版を読んだか」 */
 const TUT_KEY = 'kalimba-tutorial-seen';
 
 const TUT = [
@@ -1909,8 +1918,7 @@ const TUT = [
       '<li><b>▶ 最初から</b> … 曲の頭から鳴らします（<kbd>Shift</kbd>+<kbd>Space</kbd>）</li>' +
       '<li><b>▶ ここから</b> … えらんだ音符から鳴らします（<kbd>Space</kbd>）</li>' +
       '<li><b>🔔 拍</b> … メトロノーム。テンポに合わせてクリック音が鳴ります</li>' +
-      '<li><b>🎵 練習</b> … カリンバと同じキーの並びに、楽譜どおりの<b>ノーツが上から降ってきます</b>。' +
-      '下の線に届いた瞬間がその音を弾くタイミングです</li>' +
+      '<li><b>🎵 練習</b> … ノーツが降ってくる練習モードです（次のページでくわしく）</li>' +
       '<li><b>🔇 無音</b> … <b>音を出さずに譜面の進行だけ</b>動きます。' +
       '自分でカリンバを弾きながら、今どこを弾いているか目で追うためのモードです</li>' +
       '</ul>' +
@@ -1919,7 +1927,30 @@ const TUT = [
       '<p>🎤 <b>マイク</b>を押すと、弾いた音を拾って楽譜にすることもできます（単音のみ・下書き用）。</p>'
   },
   {
-    title: '⑤ 保存して持ち出す',
+    title: '⑤ 練習モード（ノーツが降ってくる）',
+    html:
+      '<p><b>🎵 練習</b>を押すと、画面いっぱいに<b>カリンバの絵</b>が出て、' +
+      '楽譜どおりのノーツが上から降ってきます。' +
+      '<b>黄色い線に届いた瞬間</b>が、そのキーを弾くタイミングです。</p>' +
+      '<div class="fig">' +
+      '<img src="practice-demo.gif" width="380" height="207" alt="ノーツが降ってきて、カリンバのキーに届く様子">' +
+      '<p class="cap">実際の画面です。キーの並びは実物のカリンバと同じ（真ん中が低い音）で、' +
+      'ノーツに書いてある数字が、弾くキーの番号です</p>' +
+      '</div>' +
+      '<ul>' +
+      '<li><b>▶ 開始 / ⏸ 一時停止 / ▶ 再開</b> … <kbd>Space</kbd> でも切り替えられます。' +
+      '止めた場所から続けられます</li>' +
+      '<li><b>■</b> … 曲の先頭に戻します</li>' +
+      '<li><b>画面を上下にドラッグ</b> … 聞きたい場所へ移動できます。' +
+      'ノーツをつかんで下へ引くと先に進みます。鳴らしている途中でもつかめます</li>' +
+      '<li><b>速さ</b> … ノーツの落ちる速さ。遅くすると、先の音符まで見えます</li>' +
+      '<li><b>🔇</b> … 音を出しません。<b>自分でカリンバを弾きながら使うとき</b>用です</li>' +
+      '</ul>' +
+      '<p>ノーツの<b>色はオクターブ</b>（青＝基準、緑＝1つ上、紫＝2つ上）。</p>' +
+      '<div class="tip"><b>当たり判定や点数はありません</b>。「いつ・どのキーを弾くか」の目安です。</div>'
+  },
+  {
+    title: '⑥ 保存して持ち出す',
     html:
       '<p><b>📁 曲・保存</b>を押すと、保存のパネルが開きます。</p>' +
       '<ul>' +
@@ -1946,7 +1977,7 @@ function openTutorial(step) {
 }
 function closeTutorial() {
   document.getElementById('tutorial').hidden = true;
-  try { localStorage.setItem(TUT_KEY, '1'); } catch (e) {}
+  try { localStorage.setItem(TUT_KEY, APP_VERSION); } catch (e) {}
 }
 function renderTutorial() {
   const t = TUT[tutStep];
@@ -2590,10 +2621,11 @@ function boot() {
     const sp = +localStorage.getItem(FALL_SPEED_KEY);
     if (sp >= 1 && sp <= 10) fall.speed = sp;
   } catch (e) {}
-  let firstTime = true;
-  try { firstTime = localStorage.getItem(TUT_KEY) !== '1'; } catch (e) {}
+  /* 初めての人と、前に読んだあと版が上がった人に出す */
+  let unread = true;
+  try { unread = localStorage.getItem(TUT_KEY) !== APP_VERSION; } catch (e) {}
   /* 練習画面の URL で来た人には、使い方モーダルを重ねない */
-  if (firstTime && !isFallPath()) setTimeout(() => openTutorial(0), 350);
+  if (unread && !isFallPath()) setTimeout(() => openTutorial(0), 350);
   if (!state.notes.length) state.notes = [newNote(clampStep(0), 'q', false, true)];
   syncInputs();
   buildDurPalette();

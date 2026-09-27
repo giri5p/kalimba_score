@@ -14,7 +14,10 @@ const TYPES = {
   '.js':   'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.md':   'text/markdown; charset=utf-8',
-  '.css':  'text/css; charset=utf-8'
+  '.css':  'text/css; charset=utf-8',
+  '.gif':  'image/gif',
+  '.png':  'image/png',
+  '.svg':  'image/svg+xml'
 };
 
 /* 拡張子のないパス（/practice など）用。ページ本体を返す */
