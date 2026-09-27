@@ -1736,7 +1736,8 @@ function acctMsg(text, kind) {
   p.hidden = !text;
 }
 function acctBusy(on) {
-  ['acctLogin', 'acctRegister', 'acctLogout', 'cloudSave', 'cloudReload'].forEach(id => {
+  ['acctLogin', 'acctRegister', 'acctLogout', 'cloudSave', 'cloudReload',
+   'acctDelete'].forEach(id => {
     const b = document.getElementById(id);
     if (b) b.disabled = on;
   });
@@ -1826,6 +1827,28 @@ async function acctLogout() {
   cloudSongs = [];
   renderAccount();
   acctMsg('ログアウトしました。', 'ok');
+}
+
+/* 退会。押し間違いで消えないように、ログインIDを打ってもらう */
+async function acctDelete() {
+  if (!auth) return;
+  const typed = prompt('アカウントと、クラウドに入れた曲をすべて消します。元に戻せません。\n\n' +
+                       '消してよければ、ログインID「' + auth.id + '」を入力してください。');
+  if (typed === null) return;
+  if (typed.trim() !== auth.id) {
+    acctMsg('ログインIDが一致しませんでした。削除はしていません。', 'err');
+    return;
+  }
+  acctBusy(true);
+  acctMsg('削除しています…');
+  try {
+    const r = await apiCall('/api/account', { method: 'DELETE' });
+    authStore(null);
+    cloudSongs = [];
+    renderAccount();
+    acctMsg('アカウントを削除しました（曲 ' + (r.deleted || 0) + ' 件）。', 'ok');
+  } catch (e) { acctMsg(e.message, 'err'); }
+  finally { acctBusy(false); }
 }
 
 async function cloudReload() {
@@ -2728,6 +2751,7 @@ function bindUi() {
   $('acctLogin').addEventListener('click', () => acctSubmit('login'));
   $('acctRegister').addEventListener('click', () => acctSubmit('register'));
   $('acctLogout').addEventListener('click', () => acctLogout());
+  $('acctDelete').addEventListener('click', () => acctDelete());
   $('cloudSave').addEventListener('click', () => cloudSave());
   $('cloudReload').addEventListener('click', () => cloudReload());
   /* パスワード欄で Enter を押したらログイン */

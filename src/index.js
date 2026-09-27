@@ -9,6 +9,9 @@
      t:<トークン>     … {uid, id}            （期限つき。ログイン状態の記録）
      s:<uid>:<曲名>   … 曲の中身（JSON 文字列）。表示用の名前などは metadata に入れる
 
+   退会すると u: と s: を消します。t:（ログイン記録）は期限切れに任せますが、
+   session() が「その利用者がまだいるか」を見るので、消したあとは入れません。
+
    パスワードの扱いについて:
    Workers の無料枠は 1 リクエストあたり CPU 10ms までなので、
    サーバー側で時間のかかるハッシュ（PBKDF2 を何万回も回すようなもの）は動かせません。
@@ -74,7 +77,12 @@ async function session(req, env) {
   const token = h.replace(/^Bearer\s+/i, '');
   if (!token) return null;
   const v = await env.KV.get('t:' + token, 'json');
-  return v ? { token, uid: v.uid, id: v.id } : null;
+  if (!v) return null;
+  /* 退会したあと、別の端末に残っていた記録で入れてしまわないように、
+     その利用者がまだいるかどうかも確かめる */
+  const u = await env.KV.get('u:' + v.id, 'json');
+  if (!u || u.uid !== v.uid) return null;
+  return { token, uid: v.uid, id: v.id };
 }
 
 async function newSession(env, uid, id) {
@@ -169,6 +177,22 @@ async function delSong(env, s, name) {
   return json({ ok: true });
 }
 
+/* ---------- 退会 ---------- */
+/* その人の曲をすべて消してから、利用者そのものを消す。元に戻せない。
+   ほかの端末に残っているログイン記録は、session() が
+   「利用者がもういない」と見て弾くので、そちらは消さなくてよい */
+async function delAccount(env, s) {
+  let n = 0, cursor;
+  do {
+    const r = await env.KV.list({ prefix: 's:' + s.uid + ':', cursor });
+    for (const k of r.keys) { await env.KV.delete(k.name); n++; }
+    cursor = r.list_complete ? null : r.cursor;
+  } while (cursor);
+  await env.KV.delete('u:' + s.id);
+  await env.KV.delete('t:' + s.token);
+  return json({ ok: true, deleted: n });
+}
+
 /* ---------- 振り分け ---------- */
 async function api(req, env, path) {
   if (path === '/api/register' && req.method === 'POST') return register(req, env);
@@ -182,6 +206,8 @@ async function api(req, env, path) {
   if (!s) return bad('ログインしていません', 401);
 
   if (path === '/api/me') return json({ id: s.id });
+
+  if (path === '/api/account' && req.method === 'DELETE') return delAccount(env, s);
 
   if (path === '/api/songs') {
     const url = new URL(req.url);
