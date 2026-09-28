@@ -2324,6 +2324,22 @@ function tutMove(d) {
    ノーツを上から落とす。下の判定ラインに届いた瞬間がその音を
    弾くタイミング。弾くのは人間なので、当たり判定や採点はしない。
    ============================================================ */
+const PANEL_KEY = 'kalimba-panel-open';
+
+/* 下のパネル（音符の長さ・編集・鍵盤・操作の説明）をまとめて開け閉めする。
+   閉じておくと、そのぶん楽譜が広く見える */
+function setPanel(open) {
+  const p = document.getElementById('panel');
+  const body = document.getElementById('panelBody');
+  const b = document.getElementById('panelToggle');
+  if (!p || !body || !b) return;
+  body.hidden = !open;
+  p.classList.toggle('closed', !open);
+  b.textContent = open ? '下の操作パネルを隠す ▼' : '下の操作パネルを出す ▲';
+  b.setAttribute('aria-expanded', open ? 'true' : 'false');
+  try { localStorage.setItem(PANEL_KEY, open ? '1' : '0'); } catch (e) { /* 無視 */ }
+}
+
 const FALL_SPEED_KEY = 'kalimba-fall-speed';
 const fall = {
   on: false, raf: 0, canvas: null, ctx: null,
@@ -2823,6 +2839,11 @@ function bindUi() {
     render();                       // 高さが変わるので譜面を描き直す
     blurAll();
   });
+  $('panelToggle').addEventListener('click', () => {
+    setPanel(document.getElementById('panelBody').hidden);
+    render();                     // 楽譜の高さが変わるので描き直す
+    blurAll();
+  });
   $('btnFall').addEventListener('click', () => { openFall(); blurAll(); });
   $('fallClose').addEventListener('click', () => { closeFall(); blurAll(); });
   $('fallPlay').addEventListener('click', () => { fallTogglePlay(); blurAll(); });
@@ -2936,6 +2957,10 @@ function boot() {
       if (saved) deserialize(saved);
     } catch (e) { /* 壊れていたら初期状態 */ }
   }
+  /* 前に閉じていたら閉じたままにする。初めての人には開いて見せる */
+  let panelOpen = true;
+  try { panelOpen = localStorage.getItem(PANEL_KEY) !== '0'; } catch (e) { /* 無視 */ }
+  setPanel(panelOpen);
   readOnly = window.matchMedia(NARROW).matches;   // 画面の広さだけで決める
   try { setSilent(localStorage.getItem(SILENT_KEY) === '1'); } catch (e) {}
   try {
