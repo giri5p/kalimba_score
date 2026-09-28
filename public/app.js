@@ -2335,7 +2335,9 @@ function setPanel(open) {
   if (!p || !body || !b) return;
   body.hidden = !open;
   p.classList.toggle('closed', !open);
-  b.textContent = open ? '下の操作パネルを隠す ▼' : '下の操作パネルを出す ▲';
+  b.textContent = open ? '▼' : '▲';
+  b.title = open ? '下のパネルを隠す' : '下のパネルを出す';
+  b.setAttribute('aria-label', b.title);
   b.setAttribute('aria-expanded', open ? 'true' : 'false');
   try { localStorage.setItem(PANEL_KEY, open ? '1' : '0'); } catch (e) { /* 無視 */ }
 }
