@@ -244,9 +244,9 @@
   .dots i{width:7px;height:7px;border-radius:50%;background:var(--line);display:block}
   .dots i.on{background:var(--accent)}
 
-  /* 下のパネルは右下の ▼ ▲ で開け閉めできる。閉じると、そのぶん楽譜が広く見える。
-     ボタンはパネルの中に浮かせて置くので、開いていても高さは増えない */
-  .paneltoggle{position:absolute;right:6px;bottom:5px;width:30px;height:20px;
+  /* 下のパネルは ▼ ▲ で開け閉めできる。閉じると、そのぶん楽譜が広く見える。
+     ボタンはパネルの右上に浮かせて置くので、開いていても高さは増えない */
+  .paneltoggle{position:absolute;right:6px;top:5px;width:30px;height:20px;
                padding:0;background:#fff;border:1px solid var(--line);border-radius:4px;
                font-size:10px;line-height:18px;color:var(--muted);cursor:pointer}
   .paneltoggle:hover{background:#e9edf4;color:var(--accent)}
