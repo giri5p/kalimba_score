@@ -445,6 +445,18 @@ function render() {
 
 const staveTopOf = st => st.getYForLine(0) - 40;
 
+/* 連桁（音符どうしをつなぐ横棒）を、何拍ぶんで区切るか。
+
+   VexFlow の既定は「1拍ごと」なので、4/4 だと 8分音符が 2個ずつにしか
+   つながらない。8分音符だけの小節は 2拍ぶん（＝4個）までつないだほうが読みやすい。
+   16分音符などが混ざる小節は、つなぎすぎると読みにくいので 1拍ごとに切る。
+   8分の6・8分の3 は、付点4分（8分音符3つ）でひとまとまりにする。 */
+function beamUnits(m) {
+  if (state.beatValue === 8 && state.beats % 3 === 0) return 3;   // 8分の6・8分の3
+  if (m.idx.some(i => DEN[state.notes[i].d] >= 16)) return 1;     // 16分より細かい音符あり
+  return state.beats === 3 ? 3 : 2;                               // 3/4 は1小節、ほかは2拍
+}
+
 function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones) {
   const vfNotes = m.idx.map(i => {
     const n = state.notes[i];
@@ -459,7 +471,10 @@ function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones) {
   });
 
   let beams = [];
-  try { beams = F.Beam.generateBeams(vfNotes); } catch (e) { beams = []; }
+  try {
+    beams = F.Beam.generateBeams(vfNotes,
+                                 { groups: [new F.Fraction(beamUnits(m), state.beatValue)] });
+  } catch (e) { beams = []; }
 
   /* 入力途中の小節は、見えない音符で残りを埋めて拍の位置をそろえる */
   const pad = padDurations(state.beats / state.beatValue - m.filled);
