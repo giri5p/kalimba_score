@@ -445,16 +445,59 @@ function render() {
 
 const staveTopOf = st => st.getYForLine(0) - 40;
 
-/* 連桁（音符どうしをつなぐ横棒）を、何拍ぶんで区切るか。
+/* 連桁を何拍ぶんまで繋ぐか。
+   ・8分の6・8分の3 … 付点4分（8分音符3つ）ぶん
+   ・16分より細かい音符を含むまとまり … 1拍ぶん（繋ぎすぎると読みにくい）
+   ・8分音符だけのまとまり … 2拍ぶん（4分の3 は1小節ぶん） */
+function beamUnits(hasShort) {
+  if (state.beatValue === 8 && state.beats % 3 === 0) return 3;
+  if (hasShort) return 1;
+  return state.beats === 3 ? 3 : 2;
+}
 
-   VexFlow の既定は「1拍ごと」なので、4/4 だと 8分音符が 2個ずつにしか
-   つながらない。8分音符だけの小節は 2拍ぶん（＝4個）までつないだほうが読みやすい。
-   16分音符などが混ざる小節は、つなぎすぎると読みにくいので 1拍ごとに切る。
-   8分の6・8分の3 は、付点4分（8分音符3つ）でひとまとまりにする。 */
-function beamUnits(m) {
-  if (state.beatValue === 8 && state.beats % 3 === 0) return 3;   // 8分の6・8分の3
-  if (m.idx.some(i => DEN[state.notes[i].d] >= 16)) return 1;     // 16分より細かい音符あり
-  return state.beats === 3 ? 3 : 2;                               // 3/4 は1小節、ほかは2拍
+/* 連桁を自分で組み立てる。
+
+   まず、休符と4分音符より長い音符で区切って「続けて弾く8分音符などのまとまり」を作り、
+   まとまりが長いときだけ途中で切る。
+
+   切る位置は「小節の頭から2拍ごと」ではなく「そのまとまりが始まったところから」で数える。
+   小節の頭を基準にすると、たとえば 4分 → 8分×3 → 4分 という並びで、
+   3つ続く8分音符が2拍目の区切り線をまたいで 1個＋2個 に割れてしまう。
+
+   ・休符と、4分音符より長い音符でいったん切る
+   ・まとまりの頭から beamUnits 拍ぶんを超えたら、そこで切る
+   ・2つ以上つながるときだけ連桁にする（1つだけなら旗が付く）
+
+   VexFlow の generateBeams には任せていない。区切りを渡す方式だと、
+   休符が同じ区切りに入ったときにその区切りの連桁がまるごと作られなくなる。 */
+function buildBeams(F, m, vfNotes) {
+  /* 休符と長い音符で区切って、まとまりを作る */
+  const segs = [];
+  let seg = [];
+  const endSeg = () => { if (seg.length) segs.push(seg); seg = []; };
+  m.idx.forEach((i, k) => {
+    const n = state.notes[i];
+    if (n.rest || DEN[n.d] < 8) endSeg();
+    else seg.push({ note: vfNotes[k], len: noteValue(n), den: DEN[n.d] });
+  });
+  endSeg();
+
+  /* まとまりごとに、頭から数えて長すぎるところで切る */
+  const beams = [];
+  segs.forEach(sg => {
+    const unit = beamUnits(sg.some(x => x.den >= 16)) / state.beatValue;
+    let run = [], acc = 0;
+    const flush = () => {
+      if (run.length > 1) { try { beams.push(new F.Beam(run)); } catch (e) { /* 無視 */ } }
+      run = []; acc = 0;
+    };
+    sg.forEach(x => {
+      if (run.length && acc + x.len > unit + 1e-9) flush();
+      run.push(x.note); acc += x.len;
+    });
+    flush();
+  });
+  return beams;
 }
 
 function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones) {
@@ -471,10 +514,7 @@ function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones) {
   });
 
   let beams = [];
-  try {
-    beams = F.Beam.generateBeams(vfNotes,
-                                 { groups: [new F.Fraction(beamUnits(m), state.beatValue)] });
-  } catch (e) { beams = []; }
+  try { beams = buildBeams(F, m, vfNotes); } catch (e) { beams = []; }
 
   /* 入力途中の小節は、見えない音符で残りを埋めて拍の位置をそろえる */
   const pad = padDurations(state.beats / state.beatValue - m.filled);
