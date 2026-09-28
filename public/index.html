@@ -112,7 +112,8 @@
   #empty{text-align:center;color:var(--muted);padding:40px 0}
 
   /* ---------- 入力パネル ---------- */
-  .panel{background:var(--chrome);border-top:1px solid var(--line);padding:9px 14px 12px;flex:none}
+  .panel{background:var(--chrome);border-top:1px solid var(--line);padding:9px 14px 12px;
+         flex:none;position:relative}
   .prow{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;justify-content:center}
   .durs{display:flex;gap:4px}
   .durs button{min-width:42px;padding:4px 6px 5px;text-align:center;line-height:1.15}
@@ -243,6 +244,17 @@
   .dots i{width:7px;height:7px;border-radius:50%;background:var(--line);display:block}
   .dots i.on{background:var(--accent)}
 
+  /* 下のパネルは ▼ ▲ で開け閉めできる。閉じると、そのぶん楽譜が広く見える。
+     ボタンはパネルの外（上ぶち）にタブのように貼り付ける。
+     パネルの中に置かないので、開いていてもパネルの高さは増えない */
+  /* right は、縦スクロールバー（だいたい15px）に重ならないところまで寄せてある */
+  .paneltoggle{position:absolute;right:26px;bottom:100%;width:60px;height:30px;
+               padding:0;background:var(--chrome);
+               border:1px solid var(--line);border-bottom:0;border-radius:6px 6px 0 0;
+               font-size:12px;line-height:28px;color:var(--muted);cursor:pointer}
+  .paneltoggle:hover{background:#e9edf4;color:var(--accent)}
+  .panelbody[hidden]{display:none}
+  .panel.closed{padding:0;min-height:0}
   .hint{font-size:11.5px;color:var(--muted);text-align:center;margin-top:8px;line-height:1.7}
   .hint kbd{font:inherit;font-size:11px;background:#f1f3f7;border:1px solid var(--line);
             border-bottom-width:2px;border-radius:4px;padding:1px 5px;margin:0 1px}
@@ -582,7 +594,8 @@ function writeAdmaxTag(tags) {
   <button id="micStop">■ 停止</button>
 </div>
 
-<div class="panel">
+<div class="panel" id="panel">
+  <div class="panelbody" id="panelBody">
   <div class="prow">
     <div>
       <div class="f" style="margin-bottom:3px">音符の長さ　<kbd>←</kbd> <kbd>→</kbd> / ホイール</div>
@@ -627,6 +640,8 @@ function writeAdmaxTag(tags) {
     <kbd>↑</kbd><kbd>↓</kbd> で動かす / <kbd>1</kbd>–<kbd>7</kbd>・鍵盤クリックで差し替え /
     <kbd>Delete</kbd> でその音だけ外す　<kbd>Esc</kbd> で解除
   </div>
+  </div>
+  <button class="paneltoggle" id="panelToggle" aria-controls="panelBody" aria-expanded="true"></button>
 </div>
 
 <script src="./vendor/vexflow-bravura.js"></script>

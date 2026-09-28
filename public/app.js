@@ -445,6 +445,62 @@ function render() {
 
 const staveTopOf = st => st.getYForLine(0) - 40;
 
+/* 連桁を何拍ぶんまで繋ぐか。
+   ・8分の6・8分の3 … 付点4分（8分音符3つ）ぶん
+   ・16分より細かい音符を含むまとまり … 1拍ぶん（繋ぎすぎると読みにくい）
+   ・8分音符だけのまとまり … 2拍ぶん（4分の3 は1小節ぶん） */
+function beamUnits(hasShort) {
+  if (state.beatValue === 8 && state.beats % 3 === 0) return 3;
+  if (hasShort) return 1;
+  return state.beats === 3 ? 3 : 2;
+}
+
+/* 連桁を自分で組み立てる。
+
+   まず、休符と4分音符より長い音符で区切って「続けて弾く8分音符などのまとまり」を作り、
+   まとまりが長いときだけ途中で切る。
+
+   切る位置は「小節の頭から2拍ごと」ではなく「そのまとまりが始まったところから」で数える。
+   小節の頭を基準にすると、たとえば 4分 → 8分×3 → 4分 という並びで、
+   3つ続く8分音符が2拍目の区切り線をまたいで 1個＋2個 に割れてしまう。
+
+   ・休符と、4分音符より長い音符でいったん切る
+   ・まとまりの頭から beamUnits 拍ぶんを超えたら、そこで切る
+   ・2つ以上つながるときだけ連桁にする（1つだけなら旗が付く）
+
+   VexFlow の generateBeams には任せていない。区切りを渡す方式だと、
+   休符が同じ区切りに入ったときにその区切りの連桁がまるごと作られなくなる。 */
+function buildBeams(F, m, vfNotes) {
+  /* 休符と長い音符で区切って、まとまりを作る */
+  const segs = [];
+  let seg = [];
+  const endSeg = () => { if (seg.length) segs.push(seg); seg = []; };
+  m.idx.forEach((i, k) => {
+    const n = state.notes[i];
+    if (n.rest || DEN[n.d] < 8) endSeg();
+    else seg.push({ note: vfNotes[k], len: noteValue(n), den: DEN[n.d] });
+  });
+  endSeg();
+
+  /* まとまりごとに、頭から数えて長すぎるところで切る */
+  const beams = [];
+  segs.forEach(sg => {
+    const unit = beamUnits(sg.some(x => x.den >= 16)) / state.beatValue;
+    let run = [], acc = 0;
+    const flush = () => {
+      /* 第2引数の true で、つないだ音符ぜんたいを見て棒の向きを決めさせる */
+      if (run.length > 1) { try { beams.push(new F.Beam(run, true)); } catch (e) { /* 無視 */ } }
+      run = []; acc = 0;
+    };
+    sg.forEach(x => {
+      if (run.length && acc + x.len > unit + 1e-9) flush();
+      run.push(x.note); acc += x.len;
+    });
+    flush();
+  });
+  return beams;
+}
+
 function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones) {
   const vfNotes = m.idx.map(i => {
     const n = state.notes[i];
@@ -452,14 +508,17 @@ function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones) {
     if (n.rest) {
       sn = new F.StaveNote({ keys: ['b/4'], duration: n.d + 'r' });
     } else {
-      sn = new F.StaveNote({ keys: n.p.slice().sort((a, b) => a - b).map(vexKeyOf), duration: n.d });
+      /* auto_stem を付けないと、VexFlow は棒を全部上向きにする。
+         付けると、真ん中の線より上の音は下向き・下の音は上向きになる */
+      sn = new F.StaveNote({ keys: n.p.slice().sort((a, b) => a - b).map(vexKeyOf),
+                             duration: n.d, auto_stem: true });
     }
     if (n.dot) F.Dot.buildAndAttach([sn], { all: true });
     return sn;
   });
 
   let beams = [];
-  try { beams = F.Beam.generateBeams(vfNotes); } catch (e) { beams = []; }
+  try { beams = buildBeams(F, m, vfNotes); } catch (e) { beams = []; }
 
   /* 入力途中の小節は、見えない音符で残りを埋めて拍の位置をそろえる */
   const pad = padDurations(state.beats / state.beatValue - m.filled);
@@ -2265,6 +2324,24 @@ function tutMove(d) {
    ノーツを上から落とす。下の判定ラインに届いた瞬間がその音を
    弾くタイミング。弾くのは人間なので、当たり判定や採点はしない。
    ============================================================ */
+const PANEL_KEY = 'kalimba-panel-open';
+
+/* 下のパネル（音符の長さ・編集・鍵盤・操作の説明）をまとめて開け閉めする。
+   閉じておくと、そのぶん楽譜が広く見える */
+function setPanel(open) {
+  const p = document.getElementById('panel');
+  const body = document.getElementById('panelBody');
+  const b = document.getElementById('panelToggle');
+  if (!p || !body || !b) return;
+  body.hidden = !open;
+  p.classList.toggle('closed', !open);
+  b.textContent = open ? '▼' : '▲';
+  b.title = open ? '下のパネルを隠す' : '下のパネルを出す';
+  b.setAttribute('aria-label', b.title);
+  b.setAttribute('aria-expanded', open ? 'true' : 'false');
+  try { localStorage.setItem(PANEL_KEY, open ? '1' : '0'); } catch (e) { /* 無視 */ }
+}
+
 const FALL_SPEED_KEY = 'kalimba-fall-speed';
 const fall = {
   on: false, raf: 0, canvas: null, ctx: null,
@@ -2764,6 +2841,11 @@ function bindUi() {
     render();                       // 高さが変わるので譜面を描き直す
     blurAll();
   });
+  $('panelToggle').addEventListener('click', () => {
+    setPanel(document.getElementById('panelBody').hidden);
+    render();                     // 楽譜の高さが変わるので描き直す
+    blurAll();
+  });
   $('btnFall').addEventListener('click', () => { openFall(); blurAll(); });
   $('fallClose').addEventListener('click', () => { closeFall(); blurAll(); });
   $('fallPlay').addEventListener('click', () => { fallTogglePlay(); blurAll(); });
@@ -2877,6 +2959,10 @@ function boot() {
       if (saved) deserialize(saved);
     } catch (e) { /* 壊れていたら初期状態 */ }
   }
+  /* 前に閉じていたら閉じたままにする。初めての人には開いて見せる */
+  let panelOpen = true;
+  try { panelOpen = localStorage.getItem(PANEL_KEY) !== '0'; } catch (e) { /* 無視 */ }
+  setPanel(panelOpen);
   readOnly = window.matchMedia(NARROW).matches;   // 画面の広さだけで決める
   try { setSilent(localStorage.getItem(SILENT_KEY) === '1'); } catch (e) {}
   try {
