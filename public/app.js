@@ -488,7 +488,8 @@ function buildBeams(F, m, vfNotes) {
     const unit = beamUnits(sg.some(x => x.den >= 16)) / state.beatValue;
     let run = [], acc = 0;
     const flush = () => {
-      if (run.length > 1) { try { beams.push(new F.Beam(run)); } catch (e) { /* 無視 */ } }
+      /* 第2引数の true で、つないだ音符ぜんたいを見て棒の向きを決めさせる */
+      if (run.length > 1) { try { beams.push(new F.Beam(run, true)); } catch (e) { /* 無視 */ } }
       run = []; acc = 0;
     };
     sg.forEach(x => {
@@ -507,7 +508,10 @@ function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones) {
     if (n.rest) {
       sn = new F.StaveNote({ keys: ['b/4'], duration: n.d + 'r' });
     } else {
-      sn = new F.StaveNote({ keys: n.p.slice().sort((a, b) => a - b).map(vexKeyOf), duration: n.d });
+      /* auto_stem を付けないと、VexFlow は棒を全部上向きにする。
+         付けると、真ん中の線より上の音は下向き・下の音は上向きになる */
+      sn = new F.StaveNote({ keys: n.p.slice().sort((a, b) => a - b).map(vexKeyOf),
+                             duration: n.d, auto_stem: true });
     }
     if (n.dot) F.Dot.buildAndAttach([sn], { all: true });
     return sn;
