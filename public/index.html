@@ -247,7 +247,8 @@
   /* 下のパネルは ▼ ▲ で開け閉めできる。閉じると、そのぶん楽譜が広く見える。
      ボタンはパネルの外（上ぶち）にタブのように貼り付ける。
      パネルの中に置かないので、開いていてもパネルの高さは増えない */
-  .paneltoggle{position:absolute;right:8px;bottom:100%;width:60px;height:30px;
+  /* right は、縦スクロールバー（だいたい15px）に重ならないところまで寄せてある */
+  .paneltoggle{position:absolute;right:26px;bottom:100%;width:60px;height:30px;
                padding:0;background:var(--chrome);
                border:1px solid var(--line);border-bottom:0;border-radius:6px 6px 0 0;
                font-size:12px;line-height:28px;color:var(--muted);cursor:pointer}
