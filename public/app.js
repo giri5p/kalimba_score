@@ -6,7 +6,7 @@
    ここを書き換えると、すでに読んだ人にも使い方モーダルがもう一度出ます。
    機能を足したときや説明を直したときに、日付を今日にしてください。
    （読んだかどうかは、この文字列そのものを覚えておく形で判定しています） */
-const APP_VERSION = '2026-09-27';
+const APP_VERSION = '2026-09-30';
 
 /* index.html の <title> と同じもの。曲名が付いていないときはこれに戻す */
 const SITE_TITLE = 'カリンバ楽譜メーカー｜初心者でもドレミ・数字譜つきの楽譜を無料で作成';
@@ -38,7 +38,9 @@ const letterOf = s => LETTERS[degOf(s)] + octMark(s);
 /* カリンバのプリセット: base = 最低音のステップ番号, count = キー数 */
 const PRESETS = [
   { id: '17', label: '17キー (C〜E**)',  base: 0, count: 17 },
-  { id: '21', label: '21キー (C〜B**)',  base: 0, count: 21 },
+  /* 21キーは 17キーの「下」に低音4キー（ファ・ソ・ラ・シ）が足されたもの。
+     上に足されているわけではないので、base は -4（＝低いファ）になります */
+  { id: '21', label: '21キー (F.〜E**)', base: -4, count: 21 },
   { id: '15', label: '15キー (C〜C**)',  base: 0, count: 15 },
   { id: '10', label: '10キー (C*〜E**)', base: 7, count: 10 },
   { id: '8',  label: '8キー (C*〜C**)',  base: 7, count: 8 }
@@ -245,6 +247,29 @@ function padDurations(remaining) {
 const SVGNS = 'http://www.w3.org/2000/svg';
 const FONT_JP = '"Yu Gothic UI","Meiryo","Hiragino Kaku Gothic ProN",sans-serif';
 
+/* 五線譜と数字譜（簡譜）の切り替え。曲そのものには保存せず、
+   この端末の設定として覚えます */
+const NUM_VIEW_KEY = 'kalimba-number-view';
+let numberView = false;
+
+function syncViewButtons() {
+  const a = document.getElementById('viewStaff');
+  const b = document.getElementById('viewNum');
+  if (a) a.classList.toggle('on', !numberView);
+  if (b) b.classList.toggle('on', numberView);
+  /* 数字譜のときは数字そのものが本体なので、「数字」のチェックは効きません */
+  const c = document.getElementById('sNum');
+  const l = document.getElementById('sNumLabel');
+  if (c) c.disabled = numberView;
+  if (l) l.style.opacity = numberView ? '.4' : '';
+}
+function setNumberView(on) {
+  numberView = !!on;
+  syncViewButtons();
+  try { localStorage.setItem(NUM_VIEW_KEY, numberView ? '1' : '0'); } catch (e) { /* 無視 */ }
+  render();
+}
+
 let geom = [];          // geom[音符index] = {x, line, top, bot}
 let sysGeom = [];       // sysGeom[段] = {top, bot, left, right}
 let seekRects = [];     // 段ごとの「ここまで再生した」帯
@@ -300,6 +325,18 @@ function render() {
   host.innerHTML = '';
   geom = []; sysGeom = []; seekRects = []; seekEdge = null; selGroup = null;
 
+  /* 五線譜か、数字だけの簡単な表示か。
+     どちらも geom / sysGeom を同じ形で埋めるので、
+     選択枠・再生位置・クリック判定から先は共通のものが使えます */
+  const svg = numberView ? drawNumberView(host) : drawStaffView(host);
+  addOverlays(svg);
+
+  if (paper) paper.scrollTop = keepScroll;
+  drawSelection();          // 選択中の音符が画面外に出たときだけ追いかける
+}
+
+/* ---- 五線譜の表示 ---------------------------------------------- */
+function drawStaffView(host) {
   const F = window.Vex.Flow;
   const rows = (state.showSol ? 1 : 0) + (state.showNum ? 1 : 0) + (state.showLet ? 1 : 0);
   const W = Math.max(300, host.clientWidth || 900);   // スマホ幅でも画面内に収める
@@ -322,9 +359,20 @@ function render() {
     }));
     return t;
   });
+  /* 段ごとに、いちばん低い音が五線からどれだけ下へはみ出すかも調べる。
+     21キーのような低音のあるカリンバだと、下第◯線の音符とラベルが重なるので、
+     その段だけラベルをまとめて下げる（1ステップ＝5px、五線のいちばん下の線が step 2） */
+  const lineDrop = lines.map(lineMs => {
+    let lo = 2;
+    lineMs.forEach(m => m.idx.forEach(i => {
+      const n = state.notes[i];
+      if (!n.rest) lo = Math.min(lo, Math.min.apply(null, n.p));
+    }));
+    return Math.max(0, (2 - lo) * 5 - 6);
+  });
   /* 1段の高さ: VexFlow が五線の上に確保する 40px + 五線 40px + ラベル + 段間 */
-  const sysHOf = t => 80 + labelsHOf(rows, t) + 16;
-  const H = 10 + lineTones.reduce((a, t) => a + sysHOf(t), 0) + 6;
+  const sysHOf = (t, drop) => 80 + labelsHOf(rows, t) + drop + 16;
+  const H = 10 + lineTones.reduce((a, t, i) => a + sysHOf(t, lineDrop[i]), 0) + 6;
 
   const renderer = new F.Renderer(host, F.Renderer.Backends.SVG);
   renderer.resize(W, H);
@@ -340,7 +388,8 @@ function render() {
     const staveTop = y;
     let x = MARGIN;
     sysGeom[li] = { top: staveTop + 6, left: MARGIN + HEAD_W - 6,
-                    bot: staveTop + 80 + labelsHOf(rows, lineTones[li]), right: 0 };
+                    bot: staveTop + 80 + labelsHOf(rows, lineTones[li]) + lineDrop[li],
+                    right: 0 };
 
     lineMs.forEach((m, mi) => {
       /* 段の先頭だけ記号ぶん広げる。音符が並ぶ幅は、どの小節でも noteW で一定 */
@@ -355,11 +404,12 @@ function render() {
       /* 描画後に音符の開始位置を固定する（拍子記号の有無で段がずれないように） */
       if (mi === 0) stave.setNoteStartX(x + HEAD_W);
       measureNo++;
-      if (m.idx.length) drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, li, lineTones[li]);
+      if (m.idx.length) drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, li,
+                                    lineTones[li], lineDrop[li]);
       x += w;
     });
     sysGeom[li].right = x;
-    y += sysHOf(lineTones[li]);
+    y += sysHOf(lineTones[li], lineDrop[li]);
   });
 
   /* タイ。和音は「両方に共通する音」ごとに 1 本ずつ結ぶ。
@@ -391,6 +441,11 @@ function render() {
     } catch (e) { /* 描けない組み合わせは無視 */ }
   });
 
+  return svg;
+}
+
+/* ---- 選択枠・再生位置・クリック判定（どちらの表示でも同じもの） ---- */
+function addOverlays(svg) {
   /* 選択枠と、再生済みを塗るシークバーは最背面へ */
   selGroup = svgEl('g', { class: 'cursor' });
   svg.insertBefore(selGroup, svg.firstChild);
@@ -438,9 +493,247 @@ function render() {
       svg.appendChild(hh);
     });
   });
+}
 
-  if (paper) paper.scrollTop = keepScroll;
-  drawSelection();          // 選択中の音符が画面外に出たときだけ追いかける
+/* ---- 数字譜（簡譜）の表示 --------------------------------------------
+   五線譜の代わりに、カリンバのキーの数字だけを並べた簡単な楽譜を描きます。
+
+     数字        弾くキー（* が1つで1オクターブ上、2つで2オクターブ上）
+     0           休み
+     −           前の音をのばす（1拍ぶん）
+     数字の下の線 1本で「1拍の半分」、2本で「4分の1」の長さ
+     ・           付点。その音を半分だけ長くする
+
+   和音は数字を縦に積みます。ドレミ・CDE は、上のチェックが入っていれば
+   数字の下に並べます（数字そのものがこの表示の本体なので、
+   「数字」のチェックはここでは見ません）。 */
+
+const NV = {
+  margin: 14,       // 左右の余白
+  headW: 34,        // 段の左に置く小節番号のぶん
+  minW: 110,        // 1小節の最小の幅
+  numSize: 17,      // 数字の大きさ
+  toneH: 17,        // 和音を積むときの行送り
+  subH: 14          // ドレミ・CDE の行送り
+};
+
+/* 付点を付ける前の長さを拍数で。4分の4 なら4分音符が1拍 */
+const nvBeats = n => (1 / DEN[n.d]) * state.beatValue;
+/* のばし棒「−」の本数。2拍以上の音にだけ付く */
+const nvDashes = n => Math.max(0, Math.round(nvBeats(n)) - 1);
+/* 数字の下に引く線の本数。1拍より短い音に付く */
+const nvUnder = n => Math.max(0, Math.round(Math.log2(DEN[n.d] / state.beatValue)));
+
+function drawNumberView(host) {
+  const W = Math.max(300, host.clientWidth || 900);
+  const measures = buildMeasures();
+  const perLine = Math.max(1, Math.min(state.perLine,
+                  Math.floor((W - NV.margin * 2 - NV.headW) / NV.minW)));
+  const mW = (W - NV.margin * 2 - NV.headW) / perLine;  // 1小節の幅
+  const lines = [];
+  for (let i = 0; i < measures.length; i += perLine) lines.push(measures.slice(i, i + perLine));
+
+  /* 段ごとに、その段でいちばん音数の多い和音を調べて高さを決める */
+  const lineTones = lines.map(ms => {
+    let t = 1;
+    ms.forEach(m => m.idx.forEach(i => {
+      const n = state.notes[i];
+      if (!n.rest) t = Math.max(t, Math.min(4, n.p.length));
+    }));
+    return t;
+  });
+  const legendH = 34;                                   // いちばん下に置く記号の説明
+  const H = 12 + lineTones.reduce((a, t) => a + nvRows(t).h, 0) + 8 + legendH;
+
+  const svg = svgEl('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H });
+  host.appendChild(svg);
+
+  const bar = (x, y0, y1, w) => svg.appendChild(svgEl('rect', {
+    x: x - (w || 1) / 2, y: y0, width: w || 1, height: y1 - y0, fill: '#1c2024' }));
+
+  let measureNo = 1;
+  let y = 12;
+
+  lines.forEach((lineMs, li) => {
+    const t = lineTones[li];
+    const r = nvRows(t);
+    const numTop = y + r.numTop;                 // 1段目の数字のベースライン
+    const numBot = y + r.numBot;                 // いちばん下の数字のベースライン
+    const blockTop = y + 4;
+    const blockBot = y + r.h - 8;
+    const left = NV.margin + NV.headW;
+
+    sysGeom[li] = { top: blockTop, left: left - 6, bot: blockBot,
+                    right: left + lineMs.length * mW };
+
+    /* 段の先頭に小節番号。1段目だけ拍子も出す。
+       拍子は、ふつうの音符と同じ行（いちばん下）にそろえる */
+    svgText(svg, NV.margin + 8, numTop - 14, String(measureNo), 10.5, '#8a919b');
+    if (li === 0) {
+      svgText(svg, NV.margin + NV.headW / 2, numBot + 2,
+              state.beats + '/' + state.beatValue, 12, '#8a919b', '600');
+    }
+
+    lineMs.forEach((m, mi) => {
+      const mx = left + mi * mW;
+      bar(mx, blockTop + 4, blockBot - 4);               // 小節の頭の縦線
+      nvDrawMeasure(svg, m, mx + 10, mW - 20, li, numBot,
+                    y + r.sol, y + r.let, blockTop, blockBot);
+      measureNo++;
+    });
+
+    /* 段の終わりの縦線。曲の終わりだけ太くする */
+    bar(left + lineMs.length * mW, blockTop + 4, blockBot - 4,
+        li === lines.length - 1 ? 3 : 1);
+
+    y += r.h;
+  });
+
+  /* タイ。同じ段にある隣どうしだけ、数字の上に弧を描く */
+  state.notes.forEach((n, i) => {
+    const nx = state.notes[i + 1];
+    if (!n.tie || n.rest || !nx || nx.rest) return;
+    const a = geom[i], b = geom[i + 1];
+    if (!a || !b || a.line !== b.line || b.x <= a.x) return;
+    const top = Math.min(a.heads[0] != null ? a.heads[0] : a.top,
+                         b.heads[0] != null ? b.heads[0] : b.top) - 9;
+    svg.appendChild(svgEl('path', {
+      d: 'M' + (a.x + 7) + ' ' + top + ' Q' + ((a.x + b.x) / 2) + ' ' + (top - 7) +
+         ' ' + (b.x - 7) + ' ' + top,
+      fill: 'none', stroke: '#1c2024', 'stroke-width': 1.3 }));
+  });
+
+  /* 記号の読み方。印刷や PNG にもそのまま入るよう、楽譜の中に書いておきます */
+  svgText(svg, W / 2, H - 20,
+    '数字 = 弾くキー（* は1オクターブ上）　0 = 休み　− = のばす',
+    10.5, '#9aa1ab');
+  svgText(svg, W / 2, H - 6,
+    '数字の下の線 = 短い音（1本で半分、2本で4分の1）　・ = 付点',
+    10.5, '#9aa1ab');
+
+  return svg;
+}
+
+/* 1段ぶんの行の位置（段の上端からの相対値）。
+   高さの計算と実際の描画で同じものを使うため、1か所にまとめてあります。 */
+function nvRows(t) {
+  const numTop = 26;
+  const numBot = numTop + (t - 1) * NV.toneH;
+  let y = numBot + 12;                                  // 下線のぶんを空ける
+  /* 数字譜では CDE が上、ドレミが下。
+     どの段も「いちばん低い音」を下にそろえて、和音は上へ積んでいくので、
+     返すのはそれぞれの“いちばん下の行”の位置です */
+  let lt = 0, sol = 0;
+  if (state.showLet) { y += 12 + (t - 1) * 10; lt = y; }
+  if (state.showSol) { y += 13 + (t - 1) * 11; sol = y; }
+  return { numTop: numTop, numBot: numBot, sol: sol, let: lt, h: y + 20 };
+}
+
+/* 1小節ぶんを描く。
+
+   音符の横位置は「拍どおり」にすると、16分音符が並んだところで
+   数字が重なってしまいます。そこで
+     その音符に最低限ほしい幅 ＋ 余った幅を長さの比で分ける
+   という配り方にしています。音数が少ない小節ではほぼ拍どおりになり、
+   詰まった小節でも最低限の間隔が残ります。 */
+function nvDrawMeasure(svg, m, x0, span, line, numBot, solY, letY, top, bot) {
+  if (!m.idx.length) return;
+
+  const durs = m.idx.map(i => noteValue(state.notes[i]));
+  /* その音符の文字幅ぶん。「1**」のような長い数字は広めに取る */
+  const mins = m.idx.map(i => {
+    const n = state.notes[i];
+    const len = n.rest ? 1 : Math.max.apply(null, labelsFor(n).num.map(s => s.length));
+    return Math.max(16, len * 8 + 6);
+  });
+  const totalMin = mins.reduce((a, b) => a + b, 0);
+  const totalDur = durs.reduce((a, b) => a + b, 0);
+  /* 最低限の幅すら入らないときは、その小節だけ全体を縮める。
+     縮めるときは文字も小さくして、数字どうしが重ならないようにする */
+  const shrink = totalMin > span ? span / totalMin : 1;
+  const sc = Math.min(1, Math.max(0.7, shrink));
+  const extra = Math.max(0, span - totalMin * shrink);
+  const numSize = NV.numSize * sc;
+
+  const cxs = [];                     // 下線をつなぐのに、あとでまとめて使う
+  let x = x0;
+  m.idx.forEach((i, k) => {
+    const n = state.notes[i];
+    const slot = mins[k] * shrink + (totalDur > 0 ? extra * durs[k] / totalDur : 0);
+    const cx = x + mins[k] * shrink / 2;
+    cxs[k] = cx;
+    const heads = [];
+
+    if (n.rest) {
+      svgText(svg, cx, numBot, '0', numSize, '#1c2024', '600');
+      heads.push(numBot - 6);
+    } else {
+      /* いちばん低い音を下の行に置き、和音で足した音は上へ積む。
+         こうすると、ふつうの音符・休符・のばし棒と同じ行に主旋律がそろいます。
+         labelsFor は高い音が先頭なので、後ろから数えて行を決めます */
+      const nums = labelsFor(n).num;
+      nums.forEach((txt, j) => {
+        const ny = numBot - (nums.length - 1 - j) * NV.toneH;
+        svgText(svg, cx, ny, txt, numSize, '#1c2024', '600');
+        /* heads は「低い順」に入れる（[ ] キーで選ぶ tone と同じ数え方） */
+        heads[nums.length - 1 - j] = ny - 6;
+      });
+    }
+
+    /* のばし棒「−」。その音符に配られた幅の中へ等間隔に置く */
+    const d = nvDashes(n);
+    for (let j = 1; j <= d; j++) {
+      svgText(svg, cx + slot * j / (d + 1), numBot, '−', numSize, '#1c2024');
+    }
+    /* 付点は「最後ののばし棒の右」。のばし棒がなければ数字のすぐ右 */
+    if (n.dot) {
+      const base = d ? cx + slot * d / (d + 1) : cx;
+      svgText(svg, base + 12 * sc, numBot - 4, '・', 11 * sc, '#1c2024');
+    }
+
+    /* ドレミ・CDE。数字と同じく、いちばん低い音を下にそろえて上へ積む */
+    const lab = labelsFor(n);
+    const last = lab.sol.length - 1;
+    if (state.showSol) lab.sol.forEach((s, j) => svgText(svg, cx, solY - (last - j) * 11, s, 11 * sc, '#6b7280'));
+    if (state.showLet) lab.let.forEach((s, j) => svgText(svg, cx, letY - (last - j) * 10, s, 10 * sc, '#9aa1ab'));
+
+    geom[i] = { x: cx, line: line, top: top, bot: bot, heads: heads };
+    x += slot;
+  });
+
+  /* 下線（1拍より短い音）。五線譜で連桁がつながるところは、
+     ここでも1本の線につなぐ。
+     2本目・3本目の線は、その本数が要る音符が続いているところだけに引く
+     （8分＋16分＋16分 なら、1本目は3つ通しで、2本目は後ろ2つぶん）。 */
+  const half = 8 * sc;
+  const line1 = (ka, kb, j) => svg.appendChild(svgEl('rect', {
+    x: cxs[ka] - half, y: numBot + 4 + j * 3.5,
+    width: (cxs[kb] - cxs[ka]) + half * 2, height: 1.2, fill: '#1c2024' }));
+
+  const runs = beamRuns(m);
+  const joined = {};
+  runs.forEach(run => run.forEach(k => { joined[k] = true; }));
+  runs.forEach(run => {
+    const uOf = k => nvUnder(state.notes[m.idx[k]]);
+    const maxU = Math.max.apply(null, run.map(uOf));
+    for (let j = 0; j < maxU; j++) {
+      let a = -1;
+      run.forEach((k, r) => {
+        const has = uOf(k) > j;
+        if (has && a < 0) a = r;
+        if (a >= 0 && (!has || r === run.length - 1)) {
+          line1(run[a], run[has ? r : r - 1], j);
+          a = -1;
+        }
+      });
+    }
+  });
+  /* まとまりに入らなかった音符（単独の8分音符や、短い休符）はその音符ぶんだけ */
+  m.idx.forEach((i, k) => {
+    if (joined[k]) return;
+    const u = nvUnder(state.notes[i]);
+    for (let j = 0; j < u; j++) line1(k, k, j);
+  });
 }
 
 const staveTopOf = st => st.getYForLine(0) - 40;
@@ -470,7 +763,10 @@ function beamUnits(hasShort) {
 
    VexFlow の generateBeams には任せていない。区切りを渡す方式だと、
    休符が同じ区切りに入ったときにその区切りの連桁がまるごと作られなくなる。 */
-function buildBeams(F, m, vfNotes) {
+/* つなぐまとまりを、小節の中の何番目どうしかで返す。
+   五線譜の連桁と、数字譜の下線で同じものを使うので、
+   どちらの表示でも同じところが繋がります。 */
+function beamRuns(m) {
   /* 休符と長い音符で区切って、まとまりを作る */
   const segs = [];
   let seg = [];
@@ -478,30 +774,38 @@ function buildBeams(F, m, vfNotes) {
   m.idx.forEach((i, k) => {
     const n = state.notes[i];
     if (n.rest || DEN[n.d] < 8) endSeg();
-    else seg.push({ note: vfNotes[k], len: noteValue(n), den: DEN[n.d] });
+    else seg.push({ k: k, len: noteValue(n), den: DEN[n.d] });
   });
   endSeg();
 
   /* まとまりごとに、頭から数えて長すぎるところで切る */
-  const beams = [];
+  const runs = [];
   segs.forEach(sg => {
     const unit = beamUnits(sg.some(x => x.den >= 16)) / state.beatValue;
     let run = [], acc = 0;
     const flush = () => {
-      /* 第2引数の true で、つないだ音符ぜんたいを見て棒の向きを決めさせる */
-      if (run.length > 1) { try { beams.push(new F.Beam(run, true)); } catch (e) { /* 無視 */ } }
+      if (run.length > 1) runs.push(run);   // 1つだけのときは繋がない
       run = []; acc = 0;
     };
     sg.forEach(x => {
       if (run.length && acc + x.len > unit + 1e-9) flush();
-      run.push(x.note); acc += x.len;
+      run.push(x.k); acc += x.len;
     });
     flush();
+  });
+  return runs;
+}
+
+function buildBeams(F, m, vfNotes) {
+  const beams = [];
+  beamRuns(m).forEach(run => {
+    /* 第2引数の true で、つないだ音符ぜんたいを見て棒の向きを決めさせる */
+    try { beams.push(new F.Beam(run.map(k => vfNotes[k]), true)); } catch (e) { /* 無視 */ }
   });
   return beams;
 }
 
-function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones) {
+function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones, drop) {
   const vfNotes = m.idx.map(i => {
     const n = state.notes[i];
     let sn;
@@ -540,7 +844,7 @@ function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones) {
   /* ドレミ / 数字譜 / CDE の 3 行ラベル (五線の実座標を基準にする) */
   const topY = stave.getYForLine(0);
   const botY = stave.getYForLine(4);
-  const base = botY + 24;
+  const base = botY + 24 + (drop || 0);   // 低い音がはみ出す段は、そのぶん下げる
   const step = rowStepOf(tones);
   m.idx.forEach((i, k) => {
     const sn = vfNotes[k];
@@ -561,7 +865,8 @@ function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones) {
     let heads = [];
     try { if (!state.notes[i].rest) heads = sn.getYs().slice(); } catch (e) { heads = []; }
     geom[i] = { x: cx, line: line, top: topY - 34, heads: heads,
-                bot: rows ? staveTopOf(stave) + 80 + labelsHOf(rows, tones) : botY + 10 };
+                bot: rows ? staveTopOf(stave) + 80 + labelsHOf(rows, tones) + (drop || 0)
+                          : botY + 10 };
     drawn[i] = { sn: sn, stave: stave };
   });
 }
@@ -2125,7 +2430,7 @@ function syncMode() {
 /* ============================================================
    17. 使い方チュートリアル
    ------------------------------------------------------------
-   はじめて開いた人向けに、6 ステップで一通りを説明する。
+   はじめて開いた人向けに、一通りを順番に説明する。
    あとからでも「❓ 使い方」でいつでも開ける。
    ============================================================ */
 /* 覚えておくのは「読んだかどうか」ではなく「どの版を読んだか」 */
@@ -2181,6 +2486,46 @@ const TUT = [
       '<p><b>数字譜</b>はカリンバのキーに書いてある番号です。' +
       '高いオクターブは <kbd>1*</kbd> <kbd>1**</kbd> のように <code>*</code> が付きます。</p>' +
       '<div class="tip">作った曲は<b>お使いの端末の中だけ</b>に保存されます。どこかに送られることはありません。</div>'
+  },
+  {
+    title: '五線譜と数字譜を切り替える',
+    html:
+      '<p>上の<b>「表示」</b>で、<b>五線譜</b>と<b>数字譜</b>を切り替えられます。' +
+      '数字譜にすると五線が消えて、<b>カリンバの数字だけが並んだかんたんな楽譜</b>になります。' +
+      '五線譜が苦手なときや、スマホの狭い画面で見るときに向いています。</p>' +
+      '<div class="fig">' +
+      '<svg width="300" height="78" viewBox="0 0 300 78" aria-hidden="true">' +
+      '<g fill="#1c2024">' +
+      '<rect x="17" y="12" width="1" height="42"/>' +
+      '<rect x="151" y="12" width="1" height="42"/>' +
+      '<rect x="281" y="12" width="3" height="42"/></g>' +
+      '<g font-family="sans-serif" text-anchor="middle" fill="#1c2024" font-size="17" font-weight="600">' +
+      '<text x="40" y="38">5</text><text x="72" y="38">5</text>' +
+      '<text x="106" y="38">6</text><text x="136" y="38">5</text>' +
+      '<text x="178" y="38">1*</text><text x="214" y="38">7</text>' +
+      '<text x="250" y="38" font-weight="400">−</text></g>' +
+      '<rect x="32" y="43" width="48" height="1.2" fill="#1c2024"/>' +
+      '<g font-family="sans-serif" text-anchor="middle" font-size="11" fill="#6b7280">' +
+      '<text x="40" y="68">ソ</text><text x="72" y="68">ソ</text>' +
+      '<text x="106" y="68">ラ</text><text x="136" y="68">ソ</text>' +
+      '<text x="178" y="68">ド</text><text x="214" y="68">シ</text></g>' +
+      '</svg>' +
+      '<p class="cap">数字譜の表示。音の長さは、数字の下の線（短い音）と − （のばす）で表します</p>' +
+      '</div>' +
+      '<p><b>記号の読み方</b></p>' +
+      '<ul>' +
+      '<li><b>数字</b> … 弾くキー。<kbd>1*</kbd> は1オクターブ上、<kbd>1**</kbd> は2オクターブ上です</li>' +
+      '<li><b>0</b> … 休み</li>' +
+      '<li><b>−</b> … 前の音を1拍ぶんのばします。2分音符なら <kbd>1 −</kbd>、全音符なら <kbd>1 − − −</kbd></li>' +
+      '<li><b>数字の下の線</b> … 1本で半分の長さ（8分音符）、2本で4分の1（16分音符）。' +
+      '五線譜で音符がつながるところは、この線もつながります</li>' +
+      '<li><b>・</b> … 付点。その音を半分だけ長くします</li>' +
+      '</ul>' +
+      '<p><b>和音</b>は数字を縦に積みます。五線譜の玉と同じように、' +
+      '<b>数字をクリックすればその音だけ</b>選んで直せます。</p>' +
+      '<div class="tip"><b>ドレミ</b>・<b>CDE</b> のチェックはそのまま効きます。' +
+      '印刷や PNG も、切り替えた表示のまま書き出されます。' +
+      '記号の読み方は楽譜のいちばん下にも入るので、印刷したものを人に渡しても伝わります。</div>'
   },
   {
     title: '① 音符を入れる',
@@ -2256,7 +2601,7 @@ const TUT = [
       '<li><b>速さ</b> … ノーツの落ちる速さ。遅くすると、先の音符まで見えます</li>' +
       '<li><b>🔇</b> … 音を出しません。<b>自分でカリンバを弾きながら使うとき</b>用です</li>' +
       '</ul>' +
-      '<p>ノーツの<b>色はオクターブ</b>（青＝基準、緑＝1つ上、紫＝2つ上）。</p>' +
+      '<p>ノーツの<b>色はオクターブ</b>（橙＝基準より下、青＝基準、緑＝1つ上、紫＝2つ上）。</p>' +
       '<div class="tip"><b>当たり判定や点数はありません</b>。「いつ・どのキーを弾くか」の目安です。</div>'
   },
   {
@@ -2512,7 +2857,8 @@ function fallResize() {
 /* オクターブごとに色を変えて、高い音・低い音を見分けやすくする */
 function laneColor(step) {
   const o = octOf(step);
-  return o <= 4 ? '#4f8bf0' : o === 5 ? '#27b0a6' : '#b072e8';
+  /* 21キーで足された低音（基準より下）も、ひと目で分かるように別の色にする */
+  return o <= 3 ? '#e08a3c' : o === 4 ? '#4f8bf0' : o === 5 ? '#27b0a6' : '#b072e8';
 }
 
 function fallLoop() {
@@ -2795,6 +3141,9 @@ function bindUi() {
   });
   tog('sSol', 'showSol'); tog('sNum', 'showNum'); tog('sLet', 'showLet');
 
+  $('viewStaff').addEventListener('click', () => { setNumberView(false); blurAll(); });
+  $('viewNum').addEventListener('click',   () => { setNumberView(true);  blurAll(); });
+
   $('modeEdit').addEventListener('click', () => { setInputMode('edit'); blurAll(); });
   $('modeAdd').addEventListener('click',  () => { setInputMode('add');  blurAll(); });
   $('modeTap').addEventListener('click',  () => { setInputMode('tap');  blurAll(); });
@@ -2963,6 +3312,10 @@ function boot() {
   let panelOpen = true;
   try { panelOpen = localStorage.getItem(PANEL_KEY) !== '0'; } catch (e) { /* 無視 */ }
   setPanel(panelOpen);
+  /* 前に数字譜で見ていたら、そのまま数字譜で開く。
+     この時点ではまだ描いていないので、ボタンの見た目だけそろえます */
+  try { numberView = localStorage.getItem(NUM_VIEW_KEY) === '1'; } catch (e) { /* 無視 */ }
+  syncViewButtons();
   readOnly = window.matchMedia(NARROW).matches;   // 画面の広さだけで決める
   try { setSilent(localStorage.getItem(SILENT_KEY) === '1'); } catch (e) {}
   try {
