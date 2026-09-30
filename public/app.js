@@ -524,6 +524,19 @@ const nvDashes = n => Math.max(0, Math.round(nvBeats(n)) - 1);
 /* 数字の下に引く線の本数。1拍より短い音に付く */
 const nvUnder = n => Math.max(0, Math.round(Math.log2(DEN[n.d] / state.beatValue)));
 
+/* 前の音符からタイでつながっていて、鳴らす音もまったく同じなら、
+   その音符は「前の音ののばし」として扱います。
+   簡譜にはタイの弧がなく、のばすことは − で表すためです。
+   （和音の一部だけが共通、といった場合は弾き直しなので、ふつうに数字を出します） */
+function nvHeld(i) {
+  const prev = state.notes[i - 1], n = state.notes[i];
+  if (!prev || !prev.tie || prev.rest || !n || n.rest) return false;
+  if (prev.p.length !== n.p.length) return false;
+  const a = prev.p.slice().sort((x, y) => x - y);
+  const b = n.p.slice().sort((x, y) => x - y);
+  return a.every((v, k) => v === b[k]);
+}
+
 function drawNumberView(host) {
   const W = Math.max(300, host.clientWidth || 900);
   const measures = buildMeasures();
@@ -589,19 +602,6 @@ function drawNumberView(host) {
     y += r.h;
   });
 
-  /* タイ。同じ段にある隣どうしだけ、数字の上に弧を描く */
-  state.notes.forEach((n, i) => {
-    const nx = state.notes[i + 1];
-    if (!n.tie || n.rest || !nx || nx.rest) return;
-    const a = geom[i], b = geom[i + 1];
-    if (!a || !b || a.line !== b.line || b.x <= a.x) return;
-    const top = Math.min(a.heads[0] != null ? a.heads[0] : a.top,
-                         b.heads[0] != null ? b.heads[0] : b.top) - 9;
-    svg.appendChild(svgEl('path', {
-      d: 'M' + (a.x + 7) + ' ' + top + ' Q' + ((a.x + b.x) / 2) + ' ' + (top - 7) +
-         ' ' + (b.x - 7) + ' ' + top,
-      fill: 'none', stroke: '#1c2024', 'stroke-width': 1.3 }));
-  });
 
   /* 記号の読み方。印刷や PNG にもそのまま入るよう、楽譜の中に書いておきます */
   svgText(svg, W / 2, H - 20,
@@ -643,7 +643,8 @@ function nvDrawMeasure(svg, m, x0, span, line, numBot, solY, letY, top, bot) {
   /* その音符の文字幅ぶん。「1**」のような長い数字は広めに取る */
   const mins = m.idx.map(i => {
     const n = state.notes[i];
-    const len = n.rest ? 1 : Math.max.apply(null, labelsFor(n).num.map(s => s.length));
+    const len = (n.rest || nvHeld(i)) ? 1
+              : Math.max.apply(null, labelsFor(n).num.map(s => s.length));
     return Math.max(16, len * 8 + 6);
   });
   const totalMin = mins.reduce((a, b) => a + b, 0);
@@ -664,8 +665,13 @@ function nvDrawMeasure(svg, m, x0, span, line, numBot, solY, letY, top, bot) {
     cxs[k] = cx;
     const heads = [];
 
+    const held = nvHeld(i);
     if (n.rest) {
       svgText(svg, cx, numBot, '0', numSize, '#1c2024', '600');
+      heads.push(numBot - 6);
+    } else if (held) {
+      /* タイでつながった音は、弾き直さずに前の音をのばすだけ */
+      svgText(svg, cx, numBot, '−', numSize, '#1c2024');
       heads.push(numBot - 6);
     } else {
       /* いちばん低い音を下の行に置き、和音で足した音は上へ積む。
@@ -691,8 +697,9 @@ function nvDrawMeasure(svg, m, x0, span, line, numBot, solY, letY, top, bot) {
       svgText(svg, base + 12 * sc, numBot - 4, '・', 11 * sc, '#1c2024');
     }
 
-    /* ドレミ・CDE。数字と同じく、いちばん低い音を下にそろえて上へ積む */
-    const lab = labelsFor(n);
+    /* ドレミ・CDE。数字と同じく、いちばん低い音を下にそろえて上へ積む。
+       のばしているだけの音符には付けない（弾き直すように見えてしまうため） */
+    const lab = held ? { sol: [], let: [] } : labelsFor(n);
     const last = lab.sol.length - 1;
     if (state.showSol) lab.sol.forEach((s, j) => svgText(svg, cx, solY - (last - j) * 11, s, 11 * sc, '#6b7280'));
     if (state.showLet) lab.let.forEach((s, j) => svgText(svg, cx, letY - (last - j) * 10, s, 10 * sc, '#9aa1ab'));
