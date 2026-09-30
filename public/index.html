@@ -373,8 +373,15 @@ function writeAdmaxTag(tags) {
     </div>
     <div class="sep"></div>
     <div class="grp">
+      <label class="f">表示</label>
+      <div class="seg" id="viewSeg">
+        <button id="viewStaff" title="ふつうの五線譜で表示します">五線譜</button>
+        <button id="viewNum" title="カリンバの数字だけを並べた、かんたんな楽譜にします">数字譜</button>
+      </div>
+    </div>
+    <div class="grp">
       <label class="chk"><input type="checkbox" id="sSol" checked>ドレミ</label>
-      <label class="chk"><input type="checkbox" id="sNum" checked>数字</label>
+      <label class="chk" id="sNumLabel"><input type="checkbox" id="sNum" checked>数字</label>
       <label class="chk"><input type="checkbox" id="sLet" checked>CDE</label>
     </div>
     <div class="sep"></div>

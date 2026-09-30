@@ -245,6 +245,29 @@ function padDurations(remaining) {
 const SVGNS = 'http://www.w3.org/2000/svg';
 const FONT_JP = '"Yu Gothic UI","Meiryo","Hiragino Kaku Gothic ProN",sans-serif';
 
+/* 五線譜と数字譜（簡譜）の切り替え。曲そのものには保存せず、
+   この端末の設定として覚えます */
+const NUM_VIEW_KEY = 'kalimba-number-view';
+let numberView = false;
+
+function syncViewButtons() {
+  const a = document.getElementById('viewStaff');
+  const b = document.getElementById('viewNum');
+  if (a) a.classList.toggle('on', !numberView);
+  if (b) b.classList.toggle('on', numberView);
+  /* 数字譜のときは数字そのものが本体なので、「数字」のチェックは効きません */
+  const c = document.getElementById('sNum');
+  const l = document.getElementById('sNumLabel');
+  if (c) c.disabled = numberView;
+  if (l) l.style.opacity = numberView ? '.4' : '';
+}
+function setNumberView(on) {
+  numberView = !!on;
+  syncViewButtons();
+  try { localStorage.setItem(NUM_VIEW_KEY, numberView ? '1' : '0'); } catch (e) { /* 無視 */ }
+  render();
+}
+
 let geom = [];          // geom[音符index] = {x, line, top, bot}
 let sysGeom = [];       // sysGeom[段] = {top, bot, left, right}
 let seekRects = [];     // 段ごとの「ここまで再生した」帯
@@ -300,6 +323,18 @@ function render() {
   host.innerHTML = '';
   geom = []; sysGeom = []; seekRects = []; seekEdge = null; selGroup = null;
 
+  /* 五線譜か、数字だけの簡単な表示か。
+     どちらも geom / sysGeom を同じ形で埋めるので、
+     選択枠・再生位置・クリック判定から先は共通のものが使えます */
+  const svg = numberView ? drawNumberView(host) : drawStaffView(host);
+  addOverlays(svg);
+
+  if (paper) paper.scrollTop = keepScroll;
+  drawSelection();          // 選択中の音符が画面外に出たときだけ追いかける
+}
+
+/* ---- 五線譜の表示 ---------------------------------------------- */
+function drawStaffView(host) {
   const F = window.Vex.Flow;
   const rows = (state.showSol ? 1 : 0) + (state.showNum ? 1 : 0) + (state.showLet ? 1 : 0);
   const W = Math.max(300, host.clientWidth || 900);   // スマホ幅でも画面内に収める
@@ -391,6 +426,11 @@ function render() {
     } catch (e) { /* 描けない組み合わせは無視 */ }
   });
 
+  return svg;
+}
+
+/* ---- 選択枠・再生位置・クリック判定（どちらの表示でも同じもの） ---- */
+function addOverlays(svg) {
   /* 選択枠と、再生済みを塗るシークバーは最背面へ */
   selGroup = svgEl('g', { class: 'cursor' });
   svg.insertBefore(selGroup, svg.firstChild);
@@ -438,9 +478,210 @@ function render() {
       svg.appendChild(hh);
     });
   });
+}
 
-  if (paper) paper.scrollTop = keepScroll;
-  drawSelection();          // 選択中の音符が画面外に出たときだけ追いかける
+/* ---- 数字譜（簡譜）の表示 --------------------------------------------
+   五線譜の代わりに、カリンバのキーの数字だけを並べた簡単な楽譜を描きます。
+
+     数字        弾くキー（* が1つで1オクターブ上、2つで2オクターブ上）
+     0           休み
+     −           前の音をのばす（1拍ぶん）
+     数字の下の線 1本で「1拍の半分」、2本で「4分の1」の長さ
+     ・           付点。その音を半分だけ長くする
+
+   和音は数字を縦に積みます。ドレミ・CDE は、上のチェックが入っていれば
+   数字の下に並べます（数字そのものがこの表示の本体なので、
+   「数字」のチェックはここでは見ません）。 */
+
+const NV = {
+  margin: 14,       // 左右の余白
+  headW: 34,        // 段の左に置く小節番号のぶん
+  minW: 110,        // 1小節の最小の幅
+  numSize: 17,      // 数字の大きさ
+  toneH: 17,        // 和音を積むときの行送り
+  subH: 14          // ドレミ・CDE の行送り
+};
+
+/* 付点を付ける前の長さを拍数で。4分の4 なら4分音符が1拍 */
+const nvBeats = n => (1 / DEN[n.d]) * state.beatValue;
+/* のばし棒「−」の本数。2拍以上の音にだけ付く */
+const nvDashes = n => Math.max(0, Math.round(nvBeats(n)) - 1);
+/* 数字の下に引く線の本数。1拍より短い音に付く */
+const nvUnder = n => Math.max(0, Math.round(Math.log2(DEN[n.d] / state.beatValue)));
+
+function drawNumberView(host) {
+  const W = Math.max(300, host.clientWidth || 900);
+  const measures = buildMeasures();
+  const perLine = Math.max(1, Math.min(state.perLine,
+                  Math.floor((W - NV.margin * 2 - NV.headW) / NV.minW)));
+  const mW = (W - NV.margin * 2 - NV.headW) / perLine;  // 1小節の幅
+  const lines = [];
+  for (let i = 0; i < measures.length; i += perLine) lines.push(measures.slice(i, i + perLine));
+
+  /* 段ごとに、その段でいちばん音数の多い和音を調べて高さを決める */
+  const lineTones = lines.map(ms => {
+    let t = 1;
+    ms.forEach(m => m.idx.forEach(i => {
+      const n = state.notes[i];
+      if (!n.rest) t = Math.max(t, Math.min(4, n.p.length));
+    }));
+    return t;
+  });
+  const legendH = 34;                                   // いちばん下に置く記号の説明
+  const H = 12 + lineTones.reduce((a, t) => a + nvRows(t).h, 0) + 8 + legendH;
+
+  const svg = svgEl('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H });
+  host.appendChild(svg);
+
+  const bar = (x, y0, y1, w) => svg.appendChild(svgEl('rect', {
+    x: x - (w || 1) / 2, y: y0, width: w || 1, height: y1 - y0, fill: '#1c2024' }));
+
+  let measureNo = 1;
+  let y = 12;
+
+  lines.forEach((lineMs, li) => {
+    const t = lineTones[li];
+    const r = nvRows(t);
+    const numTop = y + r.numTop;                 // 1段目の数字のベースライン
+    const numBot = y + r.numBot;                 // いちばん下の数字のベースライン
+    const blockTop = y + 4;
+    const blockBot = y + r.h - 8;
+    const left = NV.margin + NV.headW;
+
+    sysGeom[li] = { top: blockTop, left: left - 6, bot: blockBot,
+                    right: left + lineMs.length * mW };
+
+    /* 段の先頭に小節番号。1段目だけ拍子も出す */
+    svgText(svg, NV.margin + 8, numTop - 14, String(measureNo), 10.5, '#8a919b');
+    if (li === 0) {
+      svgText(svg, NV.margin + NV.headW / 2, numTop + 2,
+              state.beats + '/' + state.beatValue, 12, '#8a919b', '600');
+    }
+
+    lineMs.forEach((m, mi) => {
+      const mx = left + mi * mW;
+      bar(mx, blockTop + 4, blockBot - 4);               // 小節の頭の縦線
+      nvDrawMeasure(svg, m, mx + 10, mW - 20, li, numTop, numBot,
+                    y + r.sol, y + r.let, blockTop, blockBot);
+      measureNo++;
+    });
+
+    /* 段の終わりの縦線。曲の終わりだけ太くする */
+    bar(left + lineMs.length * mW, blockTop + 4, blockBot - 4,
+        li === lines.length - 1 ? 3 : 1);
+
+    y += r.h;
+  });
+
+  /* タイ。同じ段にある隣どうしだけ、数字の上に弧を描く */
+  state.notes.forEach((n, i) => {
+    const nx = state.notes[i + 1];
+    if (!n.tie || n.rest || !nx || nx.rest) return;
+    const a = geom[i], b = geom[i + 1];
+    if (!a || !b || a.line !== b.line || b.x <= a.x) return;
+    const top = Math.min(a.heads[0] != null ? a.heads[0] : a.top,
+                         b.heads[0] != null ? b.heads[0] : b.top) - 9;
+    svg.appendChild(svgEl('path', {
+      d: 'M' + (a.x + 7) + ' ' + top + ' Q' + ((a.x + b.x) / 2) + ' ' + (top - 7) +
+         ' ' + (b.x - 7) + ' ' + top,
+      fill: 'none', stroke: '#1c2024', 'stroke-width': 1.3 }));
+  });
+
+  /* 記号の読み方。印刷や PNG にもそのまま入るよう、楽譜の中に書いておきます */
+  svgText(svg, W / 2, H - 20,
+    '数字 = 弾くキー（* は1オクターブ上）　0 = 休み　− = のばす',
+    10.5, '#9aa1ab');
+  svgText(svg, W / 2, H - 6,
+    '数字の下の線 = 短い音（1本で半分、2本で4分の1）　・ = 付点',
+    10.5, '#9aa1ab');
+
+  return svg;
+}
+
+/* 1段ぶんの行の位置（段の上端からの相対値）。
+   高さの計算と実際の描画で同じものを使うため、1か所にまとめてあります。 */
+function nvRows(t) {
+  const numTop = 26;
+  const numBot = numTop + (t - 1) * NV.toneH;
+  let y = numBot + 12;                                  // 下線のぶんを空ける
+  const sol = state.showSol ? (y += 13) : 0;
+  if (state.showSol) y += (t - 1) * 11;                 // 和音は下へ積む
+  const lt = state.showLet ? (y += 12) : 0;
+  if (state.showLet) y += (t - 1) * 10;
+  return { numTop: numTop, numBot: numBot, sol: sol, let: lt, h: y + 20 };
+}
+
+/* 1小節ぶんを描く。
+
+   音符の横位置は「拍どおり」にすると、16分音符が並んだところで
+   数字が重なってしまいます。そこで
+     その音符に最低限ほしい幅 ＋ 余った幅を長さの比で分ける
+   という配り方にしています。音数が少ない小節ではほぼ拍どおりになり、
+   詰まった小節でも最低限の間隔が残ります。 */
+function nvDrawMeasure(svg, m, x0, span, line, numTop, numBot, solY, letY, top, bot) {
+  if (!m.idx.length) return;
+
+  const durs = m.idx.map(i => noteValue(state.notes[i]));
+  /* その音符の文字幅ぶん。「1**」のような長い数字は広めに取る */
+  const mins = m.idx.map(i => {
+    const n = state.notes[i];
+    const len = n.rest ? 1 : Math.max.apply(null, labelsFor(n).num.map(s => s.length));
+    return Math.max(16, len * 8 + 6);
+  });
+  const totalMin = mins.reduce((a, b) => a + b, 0);
+  const totalDur = durs.reduce((a, b) => a + b, 0);
+  /* 最低限の幅すら入らないときは、その小節だけ全体を縮める。
+     縮めるときは文字も小さくして、数字どうしが重ならないようにする */
+  const shrink = totalMin > span ? span / totalMin : 1;
+  const sc = Math.min(1, Math.max(0.7, shrink));
+  const extra = Math.max(0, span - totalMin * shrink);
+  const numSize = NV.numSize * sc;
+
+  let x = x0;
+  m.idx.forEach((i, k) => {
+    const n = state.notes[i];
+    const slot = mins[k] * shrink + (totalDur > 0 ? extra * durs[k] / totalDur : 0);
+    const cx = x + mins[k] * shrink / 2;
+    const heads = [];
+
+    if (n.rest) {
+      svgText(svg, cx, numBot, '0', numSize, '#1c2024', '600');
+      heads.push(numBot - 6);
+    } else {
+      /* 和音は高い音が上。labelsFor と同じ並び */
+      labelsFor(n).num.forEach((txt, j) => {
+        const ny = numTop + j * NV.toneH;
+        svgText(svg, cx, ny, txt, numSize, '#1c2024', '600');
+        heads.push(ny - 6);
+      });
+    }
+
+    /* 下線（1拍より短い音）。いちばん下の数字の下に引く */
+    const u = nvUnder(n);
+    for (let j = 0; j < u; j++) {
+      svg.appendChild(svgEl('rect', { x: cx - 8 * sc, y: numBot + 4 + j * 3.5,
+        width: 16 * sc, height: 1.2, fill: '#1c2024' }));
+    }
+
+    /* のばし棒「−」。その音符に配られた幅の中へ等間隔に置く */
+    const d = nvDashes(n);
+    for (let j = 1; j <= d; j++) {
+      svgText(svg, cx + slot * j / (d + 1), numBot, '−', numSize, '#1c2024');
+    }
+    /* 付点は「最後ののばし棒の右」。のばし棒がなければ数字のすぐ右 */
+    if (n.dot) {
+      const base = d ? cx + slot * d / (d + 1) : cx;
+      svgText(svg, base + 12 * sc, numBot - 4, '・', 11 * sc, '#1c2024');
+    }
+
+    /* ドレミ・CDE。和音は数字と同じ順で下へ積む */
+    const lab = labelsFor(n);
+    if (state.showSol) lab.sol.forEach((s, j) => svgText(svg, cx, solY + j * 11, s, 11 * sc, '#6b7280'));
+    if (state.showLet) lab.let.forEach((s, j) => svgText(svg, cx, letY + j * 10, s, 10 * sc, '#9aa1ab'));
+
+    geom[i] = { x: cx, line: line, top: top, bot: bot, heads: heads };
+    x += slot;
+  });
 }
 
 const staveTopOf = st => st.getYForLine(0) - 40;
@@ -2795,6 +3036,9 @@ function bindUi() {
   });
   tog('sSol', 'showSol'); tog('sNum', 'showNum'); tog('sLet', 'showLet');
 
+  $('viewStaff').addEventListener('click', () => { setNumberView(false); blurAll(); });
+  $('viewNum').addEventListener('click',   () => { setNumberView(true);  blurAll(); });
+
   $('modeEdit').addEventListener('click', () => { setInputMode('edit'); blurAll(); });
   $('modeAdd').addEventListener('click',  () => { setInputMode('add');  blurAll(); });
   $('modeTap').addEventListener('click',  () => { setInputMode('tap');  blurAll(); });
@@ -2963,6 +3207,10 @@ function boot() {
   let panelOpen = true;
   try { panelOpen = localStorage.getItem(PANEL_KEY) !== '0'; } catch (e) { /* 無視 */ }
   setPanel(panelOpen);
+  /* 前に数字譜で見ていたら、そのまま数字譜で開く。
+     この時点ではまだ描いていないので、ボタンの見た目だけそろえます */
+  try { numberView = localStorage.getItem(NUM_VIEW_KEY) === '1'; } catch (e) { /* 無視 */ }
+  syncViewButtons();
   readOnly = window.matchMedia(NARROW).matches;   // 画面の広さだけで決める
   try { setSilent(localStorage.getItem(SILENT_KEY) === '1'); } catch (e) {}
   try {
