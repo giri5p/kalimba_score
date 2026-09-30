@@ -551,17 +551,18 @@ function drawNumberView(host) {
     sysGeom[li] = { top: blockTop, left: left - 6, bot: blockBot,
                     right: left + lineMs.length * mW };
 
-    /* 段の先頭に小節番号。1段目だけ拍子も出す */
+    /* 段の先頭に小節番号。1段目だけ拍子も出す。
+       拍子は、ふつうの音符と同じ行（いちばん下）にそろえる */
     svgText(svg, NV.margin + 8, numTop - 14, String(measureNo), 10.5, '#8a919b');
     if (li === 0) {
-      svgText(svg, NV.margin + NV.headW / 2, numTop + 2,
+      svgText(svg, NV.margin + NV.headW / 2, numBot + 2,
               state.beats + '/' + state.beatValue, 12, '#8a919b', '600');
     }
 
     lineMs.forEach((m, mi) => {
       const mx = left + mi * mW;
       bar(mx, blockTop + 4, blockBot - 4);               // 小節の頭の縦線
-      nvDrawMeasure(svg, m, mx + 10, mW - 20, li, numTop, numBot,
+      nvDrawMeasure(svg, m, mx + 10, mW - 20, li, numBot,
                     y + r.sol, y + r.let, blockTop, blockBot);
       measureNo++;
     });
@@ -604,11 +605,12 @@ function nvRows(t) {
   const numTop = 26;
   const numBot = numTop + (t - 1) * NV.toneH;
   let y = numBot + 12;                                  // 下線のぶんを空ける
-  /* 数字譜では CDE が上、ドレミが下 */
-  const lt = state.showLet ? (y += 12) : 0;
-  if (state.showLet) y += (t - 1) * 10;                 // 和音は下へ積む
-  const sol = state.showSol ? (y += 13) : 0;
-  if (state.showSol) y += (t - 1) * 11;
+  /* 数字譜では CDE が上、ドレミが下。
+     どの段も「いちばん低い音」を下にそろえて、和音は上へ積んでいくので、
+     返すのはそれぞれの“いちばん下の行”の位置です */
+  let lt = 0, sol = 0;
+  if (state.showLet) { y += 12 + (t - 1) * 10; lt = y; }
+  if (state.showSol) { y += 13 + (t - 1) * 11; sol = y; }
   return { numTop: numTop, numBot: numBot, sol: sol, let: lt, h: y + 20 };
 }
 
@@ -619,7 +621,7 @@ function nvRows(t) {
      その音符に最低限ほしい幅 ＋ 余った幅を長さの比で分ける
    という配り方にしています。音数が少ない小節ではほぼ拍どおりになり、
    詰まった小節でも最低限の間隔が残ります。 */
-function nvDrawMeasure(svg, m, x0, span, line, numTop, numBot, solY, letY, top, bot) {
+function nvDrawMeasure(svg, m, x0, span, line, numBot, solY, letY, top, bot) {
   if (!m.idx.length) return;
 
   const durs = m.idx.map(i => noteValue(state.notes[i]));
@@ -651,11 +653,15 @@ function nvDrawMeasure(svg, m, x0, span, line, numTop, numBot, solY, letY, top, 
       svgText(svg, cx, numBot, '0', numSize, '#1c2024', '600');
       heads.push(numBot - 6);
     } else {
-      /* 和音は高い音が上。labelsFor と同じ並び */
-      labelsFor(n).num.forEach((txt, j) => {
-        const ny = numTop + j * NV.toneH;
+      /* いちばん低い音を下の行に置き、和音で足した音は上へ積む。
+         こうすると、ふつうの音符・休符・のばし棒と同じ行に主旋律がそろいます。
+         labelsFor は高い音が先頭なので、後ろから数えて行を決めます */
+      const nums = labelsFor(n).num;
+      nums.forEach((txt, j) => {
+        const ny = numBot - (nums.length - 1 - j) * NV.toneH;
         svgText(svg, cx, ny, txt, numSize, '#1c2024', '600');
-        heads.push(ny - 6);
+        /* heads は「低い順」に入れる（[ ] キーで選ぶ tone と同じ数え方） */
+        heads[nums.length - 1 - j] = ny - 6;
       });
     }
 
@@ -670,10 +676,11 @@ function nvDrawMeasure(svg, m, x0, span, line, numTop, numBot, solY, letY, top, 
       svgText(svg, base + 12 * sc, numBot - 4, '・', 11 * sc, '#1c2024');
     }
 
-    /* ドレミ・CDE。和音は数字と同じ順で下へ積む */
+    /* ドレミ・CDE。数字と同じく、いちばん低い音を下にそろえて上へ積む */
     const lab = labelsFor(n);
-    if (state.showSol) lab.sol.forEach((s, j) => svgText(svg, cx, solY + j * 11, s, 11 * sc, '#6b7280'));
-    if (state.showLet) lab.let.forEach((s, j) => svgText(svg, cx, letY + j * 10, s, 10 * sc, '#9aa1ab'));
+    const last = lab.sol.length - 1;
+    if (state.showSol) lab.sol.forEach((s, j) => svgText(svg, cx, solY - (last - j) * 11, s, 11 * sc, '#6b7280'));
+    if (state.showLet) lab.let.forEach((s, j) => svgText(svg, cx, letY - (last - j) * 10, s, 10 * sc, '#9aa1ab'));
 
     geom[i] = { x: cx, line: line, top: top, bot: bot, heads: heads };
     x += slot;
