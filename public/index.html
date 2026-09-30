@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>カリンバ楽譜メーカー｜ドレミ・数字譜つきの楽譜を無料でつくる</title>
-<meta name="description" content="カリンバ（親指ピアノ）用の楽譜を作れる無料のページです。音符の下にドレミ・カリンバの数字（1 2 3）・音名（C D E）を並べて表示するので、五線譜が読めなくても弾けます。印刷・リンク共有・練習モードつき。">
+<title>カリンバ楽譜メーカー｜初心者でもドレミ・数字譜つきの楽譜を無料で作成</title>
+<meta name="description" content="カリンバ（親指ピアノ）の楽譜を無料で作成できるページです。音符の下にドレミ・数字譜（1 2 3）・音名（C D E）を並べるので、楽譜が読めない初心者でも弾けます。17キー・21キー対応。印刷・リンク共有・ノーツが降ってくる音ゲー形式の画面つき。">
 <!-- /practice や存在しないパスでも同じ HTML が返るので、正規の URL は「/」だと伝える。
      相対指定にしておけば、ドメインが変わってもそのまま使えます -->
 <link rel="canonical" href="/">
@@ -16,8 +16,8 @@
 <meta property="og:site_name" content="カリンバ楽譜メーカー">
 <meta property="og:locale" content="ja_JP">
 <meta property="og:url" content="https://kalimba-score.hinauzer.workers.dev/">
-<meta property="og:title" content="カリンバ楽譜メーカー｜ドレミ・数字譜つきの楽譜を無料でつくる">
-<meta property="og:description" content="カリンバ（親指ピアノ）用の楽譜を作れる無料のページです。音符の下にドレミ・カリンバの数字（1 2 3）・音名（C D E）を並べて表示するので、五線譜が読めなくても弾けます。印刷・リンク共有・練習モードつき。">
+<meta property="og:title" content="カリンバ楽譜メーカー｜初心者でもドレミ・数字譜つきの楽譜を無料で作成">
+<meta property="og:description" content="カリンバ（親指ピアノ）の楽譜を無料で作成できるページです。音符の下にドレミ・数字譜（1 2 3）・音名（C D E）を並べるので、楽譜が読めない初心者でも弾けます。17キー・21キー対応。印刷・リンク共有・ノーツが降ってくる音ゲー形式の画面つき。">
 <meta property="og:image" content="https://kalimba-score.hinauzer.workers.dev/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -33,7 +33,7 @@
   "inLanguage": "ja",
   "url": "https://kalimba-score.hinauzer.workers.dev/",
   "isAccessibleForFree": true,
-  "description": "カリンバ（親指ピアノ）用の楽譜を作れる無料のページです。音符の下にドレミ・カリンバの数字（1 2 3）・音名（C D E）を並べて表示するので、五線譜が読めなくても弾けます。印刷・リンク共有・練習モードつき。",
+  "description": "カリンバ（親指ピアノ）の楽譜を無料で作成できるページです。音符の下にドレミ・数字譜（1 2 3）・音名（C D E）を並べるので、楽譜が読めない初心者でも弾けます。17キー・21キー対応。印刷・リンク共有・ノーツが降ってくる音ゲー形式の画面つき。",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "JPY" }
 }
 </script>
@@ -99,6 +99,10 @@
             background:var(--chrome);border:1px solid var(--line);border-radius:10px;
             font-size:13px;line-height:1.9;color:#39404a}
   .siteinfo h1{font-size:15px;margin:0 0 8px;color:var(--ink)}
+  .siteinfo h2{font-size:13.5px;margin:18px 0 7px;color:var(--ink);
+               padding-top:13px;border-top:1px solid var(--line)}
+  .siteinfo .guides{margin:0;padding-left:1.2em}
+  .siteinfo .guides li{margin-bottom:5px}
   .siteinfo p{margin:0 0 8px}
   .siteinfo p:last-child{margin-bottom:0}
   .siteinfo a{color:var(--accent)}
@@ -565,17 +569,30 @@ function writeAdmaxTag(tags) {
 
     <!-- このページの説明。検索から来た人向けの本文でもあります -->
     <section class="siteinfo">
-      <h1>カリンバ用の楽譜を、ドレミつきで作れるページ</h1>
-      <p>カリンバ（親指ピアノ）で弾くための楽譜を作れる無料のページです。
-      音符の下に<b>ドレミ</b>・<b>カリンバの数字（1 2 3）</b>・<b>音名（C D E）</b>の3つを
-      並べて表示するので、五線譜が読めなくても弾けます。
-      キーの数は 17キー・21キーなどから選べます。</p>
+      <h1>カリンバの楽譜を無料で作成 ― 初心者でも読めるドレミ・数字譜つき</h1>
+      <p>カリンバ（親指ピアノ）で弾くための<b>楽譜を無料で作成</b>できるページです。
+      音符の下に<b>ドレミ</b>・<b>数字譜（1 2 3）</b>・<b>音名（C D E）</b>の3つを
+      並べて書き出すので、<b>楽譜が読めない初心者でも弾けます</b>。
+      キーの数は 17キー・21キーなどから選べて、選んだ本数に合わせて数字が付きます。</p>
       <p>作った楽譜は、この端末に保存したり、<b>リンクにしてスマホへ送ったり</b>、
       ログインして<b>クラウドに保存</b>したりできます。印刷や PNG 書き出しもできます。
-      音ゲーのように<b>ノーツが上から降ってくる</b><a href="practice">練習モード</a>もあります。</p>
+      <a href="practice">音ゲーのようにノーツが上から降ってくる画面</a>もあるので、
+      楽譜を目で追うのが苦手でも、どのキーをいつ弾くかが分かります。</p>
       <p>音楽の知識がない人間が、自分と初心者のために作ったものです。
       半音（♯ ♭）や複雑な楽譜は扱えません。くわしくは
       <a href="about.html">このサイトについて</a>をご覧ください。</p>
+
+      <h2>はじめての方へ</h2>
+      <ul class="guides">
+        <li><a href="/guide/tsukurikata">カリンバの楽譜の作り方</a>
+            ― 初心者でも無料で作成できる6つの手順</li>
+        <li><a href="/guide/suujifu">カリンバの数字譜の読み方</a>
+            ― 1 2 3 と、数字に付く点の意味</li>
+        <li><a href="/guide/17key">17キー・21キーの音階表</a>
+            ― キーの並びと、数字・ドレミ・音名の対応</li>
+        <li><a href="/guide/beginner">カリンバ初心者ガイド</a>
+            ― 楽譜が読めなくても弾けます</li>
+      </ul>
     </section>
 
     <div class="sitefoot">
