@@ -604,10 +604,11 @@ function nvRows(t) {
   const numTop = 26;
   const numBot = numTop + (t - 1) * NV.toneH;
   let y = numBot + 12;                                  // 下線のぶんを空ける
-  const sol = state.showSol ? (y += 13) : 0;
-  if (state.showSol) y += (t - 1) * 11;                 // 和音は下へ積む
+  /* 数字譜では CDE が上、ドレミが下 */
   const lt = state.showLet ? (y += 12) : 0;
-  if (state.showLet) y += (t - 1) * 10;
+  if (state.showLet) y += (t - 1) * 10;                 // 和音は下へ積む
+  const sol = state.showSol ? (y += 13) : 0;
+  if (state.showSol) y += (t - 1) * 11;
   return { numTop: numTop, numBot: numBot, sol: sol, let: lt, h: y + 20 };
 }
 
@@ -637,11 +638,13 @@ function nvDrawMeasure(svg, m, x0, span, line, numTop, numBot, solY, letY, top, 
   const extra = Math.max(0, span - totalMin * shrink);
   const numSize = NV.numSize * sc;
 
+  const cxs = [];                     // 下線をつなぐのに、あとでまとめて使う
   let x = x0;
   m.idx.forEach((i, k) => {
     const n = state.notes[i];
     const slot = mins[k] * shrink + (totalDur > 0 ? extra * durs[k] / totalDur : 0);
     const cx = x + mins[k] * shrink / 2;
+    cxs[k] = cx;
     const heads = [];
 
     if (n.rest) {
@@ -654,13 +657,6 @@ function nvDrawMeasure(svg, m, x0, span, line, numTop, numBot, solY, letY, top, 
         svgText(svg, cx, ny, txt, numSize, '#1c2024', '600');
         heads.push(ny - 6);
       });
-    }
-
-    /* 下線（1拍より短い音）。いちばん下の数字の下に引く */
-    const u = nvUnder(n);
-    for (let j = 0; j < u; j++) {
-      svg.appendChild(svgEl('rect', { x: cx - 8 * sc, y: numBot + 4 + j * 3.5,
-        width: 16 * sc, height: 1.2, fill: '#1c2024' }));
     }
 
     /* のばし棒「−」。その音符に配られた幅の中へ等間隔に置く */
@@ -681,6 +677,40 @@ function nvDrawMeasure(svg, m, x0, span, line, numTop, numBot, solY, letY, top, 
 
     geom[i] = { x: cx, line: line, top: top, bot: bot, heads: heads };
     x += slot;
+  });
+
+  /* 下線（1拍より短い音）。五線譜で連桁がつながるところは、
+     ここでも1本の線につなぐ。
+     2本目・3本目の線は、その本数が要る音符が続いているところだけに引く
+     （8分＋16分＋16分 なら、1本目は3つ通しで、2本目は後ろ2つぶん）。 */
+  const half = 8 * sc;
+  const line1 = (ka, kb, j) => svg.appendChild(svgEl('rect', {
+    x: cxs[ka] - half, y: numBot + 4 + j * 3.5,
+    width: (cxs[kb] - cxs[ka]) + half * 2, height: 1.2, fill: '#1c2024' }));
+
+  const runs = beamRuns(m);
+  const joined = {};
+  runs.forEach(run => run.forEach(k => { joined[k] = true; }));
+  runs.forEach(run => {
+    const uOf = k => nvUnder(state.notes[m.idx[k]]);
+    const maxU = Math.max.apply(null, run.map(uOf));
+    for (let j = 0; j < maxU; j++) {
+      let a = -1;
+      run.forEach((k, r) => {
+        const has = uOf(k) > j;
+        if (has && a < 0) a = r;
+        if (a >= 0 && (!has || r === run.length - 1)) {
+          line1(run[a], run[has ? r : r - 1], j);
+          a = -1;
+        }
+      });
+    }
+  });
+  /* まとまりに入らなかった音符（単独の8分音符や、短い休符）はその音符ぶんだけ */
+  m.idx.forEach((i, k) => {
+    if (joined[k]) return;
+    const u = nvUnder(state.notes[i]);
+    for (let j = 0; j < u; j++) line1(k, k, j);
   });
 }
 
@@ -711,7 +741,10 @@ function beamUnits(hasShort) {
 
    VexFlow の generateBeams には任せていない。区切りを渡す方式だと、
    休符が同じ区切りに入ったときにその区切りの連桁がまるごと作られなくなる。 */
-function buildBeams(F, m, vfNotes) {
+/* つなぐまとまりを、小節の中の何番目どうしかで返す。
+   五線譜の連桁と、数字譜の下線で同じものを使うので、
+   どちらの表示でも同じところが繋がります。 */
+function beamRuns(m) {
   /* 休符と長い音符で区切って、まとまりを作る */
   const segs = [];
   let seg = [];
@@ -719,25 +752,33 @@ function buildBeams(F, m, vfNotes) {
   m.idx.forEach((i, k) => {
     const n = state.notes[i];
     if (n.rest || DEN[n.d] < 8) endSeg();
-    else seg.push({ note: vfNotes[k], len: noteValue(n), den: DEN[n.d] });
+    else seg.push({ k: k, len: noteValue(n), den: DEN[n.d] });
   });
   endSeg();
 
   /* まとまりごとに、頭から数えて長すぎるところで切る */
-  const beams = [];
+  const runs = [];
   segs.forEach(sg => {
     const unit = beamUnits(sg.some(x => x.den >= 16)) / state.beatValue;
     let run = [], acc = 0;
     const flush = () => {
-      /* 第2引数の true で、つないだ音符ぜんたいを見て棒の向きを決めさせる */
-      if (run.length > 1) { try { beams.push(new F.Beam(run, true)); } catch (e) { /* 無視 */ } }
+      if (run.length > 1) runs.push(run);   // 1つだけのときは繋がない
       run = []; acc = 0;
     };
     sg.forEach(x => {
       if (run.length && acc + x.len > unit + 1e-9) flush();
-      run.push(x.note); acc += x.len;
+      run.push(x.k); acc += x.len;
     });
     flush();
+  });
+  return runs;
+}
+
+function buildBeams(F, m, vfNotes) {
+  const beams = [];
+  beamRuns(m).forEach(run => {
+    /* 第2引数の true で、つないだ音符ぜんたいを見て棒の向きを決めさせる */
+    try { beams.push(new F.Beam(run.map(k => vfNotes[k]), true)); } catch (e) { /* 無視 */ }
   });
   return beams;
 }
