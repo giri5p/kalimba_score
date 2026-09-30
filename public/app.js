@@ -38,7 +38,9 @@ const letterOf = s => LETTERS[degOf(s)] + octMark(s);
 /* カリンバのプリセット: base = 最低音のステップ番号, count = キー数 */
 const PRESETS = [
   { id: '17', label: '17キー (C〜E**)',  base: 0, count: 17 },
-  { id: '21', label: '21キー (C〜B**)',  base: 0, count: 21 },
+  /* 21キーは 17キーの「下」に低音4キー（ファ・ソ・ラ・シ）が足されたもの。
+     上に足されているわけではないので、base は -4（＝低いファ）になります */
+  { id: '21', label: '21キー (F.〜E**)', base: -4, count: 21 },
   { id: '15', label: '15キー (C〜C**)',  base: 0, count: 15 },
   { id: '10', label: '10キー (C*〜E**)', base: 7, count: 10 },
   { id: '8',  label: '8キー (C*〜C**)',  base: 7, count: 8 }
@@ -357,9 +359,20 @@ function drawStaffView(host) {
     }));
     return t;
   });
+  /* 段ごとに、いちばん低い音が五線からどれだけ下へはみ出すかも調べる。
+     21キーのような低音のあるカリンバだと、下第◯線の音符とラベルが重なるので、
+     その段だけラベルをまとめて下げる（1ステップ＝5px、五線のいちばん下の線が step 2） */
+  const lineDrop = lines.map(lineMs => {
+    let lo = 2;
+    lineMs.forEach(m => m.idx.forEach(i => {
+      const n = state.notes[i];
+      if (!n.rest) lo = Math.min(lo, Math.min.apply(null, n.p));
+    }));
+    return Math.max(0, (2 - lo) * 5 - 6);
+  });
   /* 1段の高さ: VexFlow が五線の上に確保する 40px + 五線 40px + ラベル + 段間 */
-  const sysHOf = t => 80 + labelsHOf(rows, t) + 16;
-  const H = 10 + lineTones.reduce((a, t) => a + sysHOf(t), 0) + 6;
+  const sysHOf = (t, drop) => 80 + labelsHOf(rows, t) + drop + 16;
+  const H = 10 + lineTones.reduce((a, t, i) => a + sysHOf(t, lineDrop[i]), 0) + 6;
 
   const renderer = new F.Renderer(host, F.Renderer.Backends.SVG);
   renderer.resize(W, H);
@@ -375,7 +388,8 @@ function drawStaffView(host) {
     const staveTop = y;
     let x = MARGIN;
     sysGeom[li] = { top: staveTop + 6, left: MARGIN + HEAD_W - 6,
-                    bot: staveTop + 80 + labelsHOf(rows, lineTones[li]), right: 0 };
+                    bot: staveTop + 80 + labelsHOf(rows, lineTones[li]) + lineDrop[li],
+                    right: 0 };
 
     lineMs.forEach((m, mi) => {
       /* 段の先頭だけ記号ぶん広げる。音符が並ぶ幅は、どの小節でも noteW で一定 */
@@ -390,11 +404,12 @@ function drawStaffView(host) {
       /* 描画後に音符の開始位置を固定する（拍子記号の有無で段がずれないように） */
       if (mi === 0) stave.setNoteStartX(x + HEAD_W);
       measureNo++;
-      if (m.idx.length) drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, li, lineTones[li]);
+      if (m.idx.length) drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, li,
+                                    lineTones[li], lineDrop[li]);
       x += w;
     });
     sysGeom[li].right = x;
-    y += sysHOf(lineTones[li]);
+    y += sysHOf(lineTones[li], lineDrop[li]);
   });
 
   /* タイ。和音は「両方に共通する音」ごとに 1 本ずつ結ぶ。
@@ -790,7 +805,7 @@ function buildBeams(F, m, vfNotes) {
   return beams;
 }
 
-function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones) {
+function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones, drop) {
   const vfNotes = m.idx.map(i => {
     const n = state.notes[i];
     let sn;
@@ -829,7 +844,7 @@ function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones) {
   /* ドレミ / 数字譜 / CDE の 3 行ラベル (五線の実座標を基準にする) */
   const topY = stave.getYForLine(0);
   const botY = stave.getYForLine(4);
-  const base = botY + 24;
+  const base = botY + 24 + (drop || 0);   // 低い音がはみ出す段は、そのぶん下げる
   const step = rowStepOf(tones);
   m.idx.forEach((i, k) => {
     const sn = vfNotes[k];
@@ -850,7 +865,8 @@ function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones) {
     let heads = [];
     try { if (!state.notes[i].rest) heads = sn.getYs().slice(); } catch (e) { heads = []; }
     geom[i] = { x: cx, line: line, top: topY - 34, heads: heads,
-                bot: rows ? staveTopOf(stave) + 80 + labelsHOf(rows, tones) : botY + 10 };
+                bot: rows ? staveTopOf(stave) + 80 + labelsHOf(rows, tones) + (drop || 0)
+                          : botY + 10 };
     drawn[i] = { sn: sn, stave: stave };
   });
 }
@@ -2585,7 +2601,7 @@ const TUT = [
       '<li><b>速さ</b> … ノーツの落ちる速さ。遅くすると、先の音符まで見えます</li>' +
       '<li><b>🔇</b> … 音を出しません。<b>自分でカリンバを弾きながら使うとき</b>用です</li>' +
       '</ul>' +
-      '<p>ノーツの<b>色はオクターブ</b>（青＝基準、緑＝1つ上、紫＝2つ上）。</p>' +
+      '<p>ノーツの<b>色はオクターブ</b>（橙＝基準より下、青＝基準、緑＝1つ上、紫＝2つ上）。</p>' +
       '<div class="tip"><b>当たり判定や点数はありません</b>。「いつ・どのキーを弾くか」の目安です。</div>'
   },
   {
@@ -2841,7 +2857,8 @@ function fallResize() {
 /* オクターブごとに色を変えて、高い音・低い音を見分けやすくする */
 function laneColor(step) {
   const o = octOf(step);
-  return o <= 4 ? '#4f8bf0' : o === 5 ? '#27b0a6' : '#b072e8';
+  /* 21キーで足された低音（基準より下）も、ひと目で分かるように別の色にする */
+  return o <= 3 ? '#e08a3c' : o === 4 ? '#4f8bf0' : o === 5 ? '#27b0a6' : '#b072e8';
 }
 
 function fallLoop() {
