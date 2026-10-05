@@ -42,8 +42,8 @@ const PRESETS = [
      上に足されているわけではないので、base は -4（＝低いファ）になります */
   { id: '21', label: '21キー (F.〜E**)', base: -4, count: 21 },
   { id: '15', label: '15キー (C〜C**)',  base: 0, count: 15 },
-  { id: '10', label: '10キー (C*〜E**)', base: 7, count: 10 },
-  { id: '8',  label: '8キー (C*〜C**)',  base: 7, count: 8 }
+  { id: '10', label: '10キー (C〜E*)',   base: 0, count: 10 },
+  { id: '8',  label: '8キー (C〜C*)',    base: 0, count: 8 }
 ];
 const presetById = id => PRESETS.find(p => p.id === id) || PRESETS[0];
 
@@ -196,8 +196,12 @@ function deserialize(json) {
   if (o.perLine >= 1 && o.perLine <= 8) state.perLine = o.perLine | 0;
   if (MODES.indexOf(o.inputMode) >= 0) state.inputMode = o.inputMode;
   else if (typeof o.addMode === 'boolean') state.inputMode = o.addMode ? 'add' : 'edit';
+  /* 読み込むときは、選んでいるカリンバの音域に丸めません。
+     丸めてしまうと、カリンバを選び直しただけで曲が書き換わり、
+     開き直すたびに同じことが起きて元に戻せなくなるためです。
+     （音域の外に出た音も、譜面には出ますし鳴ります） */
   state.notes = o.notes.map(n => ({
-    p: (n.p && n.p.length ? n.p : [0]).map(x => clampStep(x | 0)),
+    p: (n.p && n.p.length ? n.p : [0]).map(x => Math.max(-21, Math.min(35, x | 0))),
     d: DEN[n.d] ? n.d : 'q', dot: !!n.dot, rest: !!n.rest, tie: !!n.tie
   }));
   if (!state.notes.length) state.notes = [newNote(clampStep(0), 'q', false, true)];
@@ -3135,9 +3139,24 @@ function bindUi() {
     refresh();
   });
   ps.addEventListener('change', e => {
-    pushUndo();                       // 音域外の音は丸められるので戻せるようにしておく
+    const was = state.preset;
     state.preset = e.target.value;
-    state.notes.forEach(n => { n.p = Array.from(new Set(n.p.map(clampStep))).sort((a, b) => a - b); });
+    /* 新しい音域に入らない音を数える。黙って丸めると曲が壊れるので、先に知らせる */
+    let out = 0;
+    state.notes.forEach(n => {
+      if (!n.rest) n.p.forEach(x => { if (x !== clampStep(x)) out++; });
+    });
+    if (out && !confirm(P().label + 'では鳴らせない音が ' + out + ' 個あります。\n' +
+                        'そのまま変えると、その音は出せるいちばん近い音に変わります。\n' +
+                        '（Ctrl+Z で元に戻せます）\n\nよろしいですか？')) {
+      state.preset = was;                 // やめるときは選択も元に戻す
+      e.target.value = was;
+      return;
+    }
+    if (out) {
+      pushUndo();                     // 丸めるときだけ、戻せるようにしておく
+      state.notes.forEach(n => { n.p = Array.from(new Set(n.p.map(clampStep))).sort((a, b) => a - b); });
+    }
     buildTines();
     refresh();
   });
