@@ -493,8 +493,11 @@ function addOverlays(svg) {
   geom.forEach((g, i) => {
     if (!g || !g.heads || g.heads.length < 2) return;
     g.heads.forEach((hy, k) => {
+      /* data-i を付けておかないと、玉の上でホイールを回したときに
+         「どの音符か」が分からず、先頭の音符が変わってしまう */
       const hh = svgEl('rect', { x: g.x - 9, y: hy - 7, width: 18, height: 14,
-        fill: '#000', 'fill-opacity': 0, stroke: 'none', 'pointer-events': 'all', class: 'hit' });
+        fill: '#000', 'fill-opacity': 0, stroke: 'none', 'pointer-events': 'all',
+        class: 'hit', 'data-i': i });
       hh.addEventListener('mousedown', ev => {
         if (readOnly) return;
         ev.preventDefault();
@@ -1724,7 +1727,10 @@ function onWheel(e) {
 
   if (!holding) {                           // ジェスチャの開始
     if (onNote) {
-      const i = +t.getAttribute('data-i');
+      /* data-i が無いものに当たったときに 0（先頭の音符）とみなさないよう、
+         属性があるかどうかで判断する */
+      const raw = t.getAttribute('data-i');
+      const i = raw == null ? NaN : +raw;
       if (!isNaN(i)) setCursor(i);
     }
     wheelAcc = 0;
