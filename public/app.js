@@ -1140,12 +1140,27 @@ function toggleTie() {
   refresh();
 }
 
+/* 和音に 1 音足す。足すのは「いちばん低い音の 3 度下」。
+   そこが埋まっていたり音域の外だったりしたら、空いているところを
+   下へ順に探し、下がもう無ければ上を探す。
+   （以前は「いちばん高い音の 3 度上」を足していたので、
+     その音が音域の上限にいると足し先が無く、押しても無反応だった） */
 function addChordTone() {
   pushUndo();
   eachSel(n => {
     if (n.rest || n.p.length >= 4) return;
-    const add = clampStep(Math.max.apply(null, n.p) + 2);
-    if (n.p.indexOf(add) < 0) n.p = n.p.concat([add]).sort((a, b) => a - b);
+    const lo = Math.min.apply(null, n.p), hi = Math.max.apply(null, n.p);
+    /* 音域の外にいる音符を、音域の中へ引き込まないようにする */
+    const inRange = lo >= minStep() && hi <= maxStep();
+    const min = inRange ? minStep() : -21;
+    const max = inRange ? maxStep() : 35;
+    const want = [];
+    for (let s = lo - 2; s >= min; s--) want.push(s);   // 3 度下、さらに下へ
+    want.push(lo - 1);                                  // すぐ下
+    for (let s = hi + 2; s <= max; s++) want.push(s);   // 下が無ければ上へ
+    want.push(hi + 1);
+    const add = want.find(s => s >= min && s <= max && n.p.indexOf(s) < 0);
+    if (add != null) n.p = n.p.concat([add]).sort((a, b) => a - b);
   });
   refresh();
 }
@@ -1154,7 +1169,8 @@ function removeChordTone() {
   if (tone >= 0 && selCount() === 1 && !one.rest && one.p.length > 1) { deleteNote(); return; }
   pushUndo();
   eachSel(n => {
-    if (n.p.length > 1) n.p = n.p.slice().sort((a, b) => a - b).slice(0, -1);
+    /* 足すのが下なので、外すのも下から。これで + と − が往復になる */
+    if (n.p.length > 1) n.p = n.p.slice().sort((a, b) => a - b).slice(1);
   });
   refresh();
 }
