@@ -3139,24 +3139,10 @@ function bindUi() {
     refresh();
   });
   ps.addEventListener('change', e => {
-    const was = state.preset;
+    /* カリンバを変えても、楽譜には手を触れません。
+       変わるのは下に並ぶ鍵盤と、数字の振り方だけです。
+       音域の外に出た音もそのまま残り、譜面に出て鳴ります */
     state.preset = e.target.value;
-    /* 新しい音域に入らない音を数える。黙って丸めると曲が壊れるので、先に知らせる */
-    let out = 0;
-    state.notes.forEach(n => {
-      if (!n.rest) n.p.forEach(x => { if (x !== clampStep(x)) out++; });
-    });
-    if (out && !confirm(P().label + 'では鳴らせない音が ' + out + ' 個あります。\n' +
-                        'そのまま変えると、その音は出せるいちばん近い音に変わります。\n' +
-                        '（Ctrl+Z で元に戻せます）\n\nよろしいですか？')) {
-      state.preset = was;                 // やめるときは選択も元に戻す
-      e.target.value = was;
-      return;
-    }
-    if (out) {
-      pushUndo();                     // 丸めるときだけ、戻せるようにしておく
-      state.notes.forEach(n => { n.p = Array.from(new Set(n.p.map(clampStep))).sort((a, b) => a - b); });
-    }
     buildTines();
     refresh();
   });
