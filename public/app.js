@@ -42,8 +42,8 @@ const PRESETS = [
      上に足されているわけではないので、base は -4（＝低いファ）になります */
   { id: '21', label: '21キー (F.〜E**)', base: -4, count: 21 },
   { id: '15', label: '15キー (C〜C**)',  base: 0, count: 15 },
-  { id: '10', label: '10キー (C*〜E**)', base: 7, count: 10 },
-  { id: '8',  label: '8キー (C*〜C**)',  base: 7, count: 8 }
+  { id: '10', label: '10キー (C〜E*)',   base: 0, count: 10 },
+  { id: '8',  label: '8キー (C〜C*)',    base: 0, count: 8 }
 ];
 const presetById = id => PRESETS.find(p => p.id === id) || PRESETS[0];
 
@@ -146,6 +146,14 @@ const P = () => presetById(state.preset);
 const minStep = () => P().base;
 const maxStep = () => P().base + P().count - 1;
 const clampStep = s => Math.max(minStep(), Math.min(maxStep(), s));
+/* 音符を上下に動かすときの行き先。
+   いま音域の中にいる音は、今までどおり音域の中だけを動く。
+   すでに音域の外にいる音（別のキー数で作った曲など）は、
+   勝手に引き込まず、そのまま上下に動かせるようにする。 */
+function moveStep(from, to) {
+  if (from >= minStep() && from <= maxStep()) return clampStep(to);
+  return Math.max(-21, Math.min(35, to));
+}
 
 /* fresh = まだ音を決めていない仮置きの音符。追加モードではこれだけ上書きする
    （新規作成した 1 個目で数字を押したときに、余計な音符が増えないようにするため） */
@@ -196,8 +204,12 @@ function deserialize(json) {
   if (o.perLine >= 1 && o.perLine <= 8) state.perLine = o.perLine | 0;
   if (MODES.indexOf(o.inputMode) >= 0) state.inputMode = o.inputMode;
   else if (typeof o.addMode === 'boolean') state.inputMode = o.addMode ? 'add' : 'edit';
+  /* 読み込むときは、選んでいるカリンバの音域に丸めません。
+     丸めてしまうと、カリンバを選び直しただけで曲が書き換わり、
+     開き直すたびに同じことが起きて元に戻せなくなるためです。
+     （音域の外に出た音も、譜面には出ますし鳴ります） */
   state.notes = o.notes.map(n => ({
-    p: (n.p && n.p.length ? n.p : [0]).map(x => clampStep(x | 0)),
+    p: (n.p && n.p.length ? n.p : [0]).map(x => Math.max(-21, Math.min(35, x | 0))),
     d: DEN[n.d] ? n.d : 'q', dot: !!n.dot, rest: !!n.rest, tie: !!n.tie
   }));
   if (!state.notes.length) state.notes = [newNote(clampStep(0), 'q', false, true)];
@@ -1017,7 +1029,7 @@ function movePitch(delta) {
   const one = cur();
   if (tone >= 0 && selCount() === 1 && !one.rest && tone < one.p.length) {
     const ps = one.p.slice().sort((a, b) => a - b);
-    const moved = clampStep(ps[tone] + delta);
+    const moved = moveStep(ps[tone], ps[tone] + delta);
     ps.splice(tone, 1);
     if (ps.indexOf(moved) >= 0) { refresh(); return; }   // 同じ音が既にある
     ps.push(moved);
@@ -1031,10 +1043,10 @@ function movePitch(delta) {
   eachSel(n => {
     if (n.rest) return;                 // 休符は音程を持たないので飛ばす
     n.fresh = false;
-    n.p = Array.from(new Set(n.p.map(s => clampStep(s + delta)))).sort((a, b) => a - b);
+    n.p = Array.from(new Set(n.p.map(s => moveStep(s, s + delta)))).sort((a, b) => a - b);
   });
   const c = cur();
-  if (c.rest && selCount() === 1) { c.rest = false; c.fresh = false; c.p = c.p.map(s => clampStep(s + delta)); }
+  if (c.rest && selCount() === 1) { c.rest = false; c.fresh = false; c.p = c.p.map(s => moveStep(s, s + delta)); }
   refresh();
 }
 
@@ -3133,13 +3145,16 @@ function bindUi() {
     const a = e.target.value.split('/');
     state.beats = +a[0]; state.beatValue = +a[1];
     refresh();
+    blurAll();                        // ↑↓ が選択欄に取られないように
   });
   ps.addEventListener('change', e => {
-    pushUndo();                       // 音域外の音は丸められるので戻せるようにしておく
+    /* カリンバを変えても、楽譜には手を触れません。
+       変わるのは下に並ぶ鍵盤と、数字の振り方だけです。
+       音域の外に出た音もそのまま残り、譜面に出て鳴ります */
     state.preset = e.target.value;
-    state.notes.forEach(n => { n.p = Array.from(new Set(n.p.map(clampStep))).sort((a, b) => a - b); });
     buildTines();
     refresh();
+    blurAll();                        // ↑↓ が選択欄に取られないように
   });
 
   const tog = (id, key) => $(id).addEventListener('change', e => {
@@ -3165,6 +3180,7 @@ function bindUi() {
   $('perline').addEventListener('change', e => {
     state.perLine = +e.target.value || 4;
     refresh();
+    blurAll();                        // ↑↓ が選択欄に取られないように
   });
   $('btnRest').addEventListener('click', () => { toggleRest(); blurAll(); });
   $('btnDot').addEventListener('click', () => { toggleDot(); blurAll(); });
