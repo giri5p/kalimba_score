@@ -1568,8 +1568,13 @@ function syncPlayButtons() {
   const all = document.getElementById('btnPlayAll');
   const here = document.getElementById('btnPlayHere');
   if (!all || !here) return;
-  all.textContent  = (playing && playMode === 'all')  ? '■ 停止' : '▶ 最初から';
-  here.textContent = (playing && playMode === 'here') ? '■ 停止' : '▶ ここから';
+  /* textContent で書き換えると、スマホ用の短い表示（⏮ ▶）が消えて
+     ボタンが大きくなってしまうので、広い画面用と狭い画面用を分けて入れる */
+  const label = (stopping, wide, narrow) =>
+    '<span class="wideOnly">' + (stopping ? '■ 停止' : wide) + '</span>' +
+    '<span class="narrowOnly">' + (stopping ? '■' : narrow) + '</span>';
+  all.innerHTML  = label(playing && playMode === 'all',  '▶ 最初から', '⏮');
+  here.innerHTML = label(playing && playMode === 'here', '▶ ここから', '▶');
 }
 function togglePlay(mode) {
   if (playing && playMode === mode) { stop(); return; }
