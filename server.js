@@ -11,7 +11,21 @@ const path = require('path');
 const url = require('url');
 const { exec } = require('child_process');
 
-const PORT = 8731;
+/* 起動のしかた
+     node server.js              … このパソコンからだけ（既定）
+     node server.js --lan        … 同じ Wi-Fi のスマホなどからも見られる
+     node server.js --port 8732  … 別のポートで動かす（2つ同時に立てられる）
+
+   --lan を付けている間は、このパソコンのポートが同じネットワークに開きます。
+   外で使うものではないので、確かめ終わったら閉じてください。 */
+const argv = process.argv.slice(2);
+const argOf = name => {
+  const i = argv.indexOf(name);
+  return i >= 0 ? argv[i + 1] : null;
+};
+const PORT = +(argOf('--port') || 8731);
+const LAN = argv.includes('--lan');
+const HOST = LAN ? '0.0.0.0' : '127.0.0.1';
 const ROOT = path.join(__dirname, 'public');   // 公開するのは public/ の中だけ
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -167,10 +181,21 @@ http.createServer((req, res) => {
     });
     res.end(data);
   });
-}).listen(PORT, '127.0.0.1', () => {
+}).listen(PORT, HOST, () => {
   const at = 'http://localhost:' + PORT + '/';
   console.log('カリンバ楽譜メーカー: ' + at);
+  if (LAN) {
+    /* 同じ Wi-Fi の端末から開くためのアドレスを出しておく */
+    const nets = require('os').networkInterfaces();
+    Object.keys(nets).forEach(name => (nets[name] || []).forEach(n => {
+      if (n.family === 'IPv4' && !n.internal) {
+        console.log('  スマホなどから: http://' + n.address + ':' + PORT + '/   (' + name + ')');
+      }
+    }));
+    console.log('  ※ 同じ Wi-Fi につないでください。Windows が許可を聞いてきたら');
+    console.log('     「プライベート ネットワーク」を許可してください。');
+  }
   console.log('（新規登録に合言葉を要求したいときは .dev.vars に SIGNUP_CODE を書く）');
   console.log('終了するにはこのウィンドウで Ctrl+C を押してください。');
-  exec('start "" ' + at);
+  if (!LAN) exec('start "" ' + at);
 });

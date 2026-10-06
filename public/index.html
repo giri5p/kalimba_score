@@ -73,6 +73,7 @@
   .seg button.on:hover{background:var(--accent);filter:brightness(1.07)}
   .settings{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
   .narrowOnly{display:none}
+  .wideOnly{display:inline}
   #btnMenu{font-size:17px;line-height:1;padding:6px 11px}
 
   /* ---------- 楽譜 ---------- */
@@ -259,6 +260,13 @@
   .paneltoggle:hover{background:#e9edf4;color:var(--accent)}
   .panelbody[hidden]{display:none}
   .panel.closed{padding:0;min-height:0}
+
+  /* ---------- スマホ用の編集パネル ----------
+     17〜21キーの鍵盤は画面幅に入らないので、ドレミ7つ＋オクターブ切替にしている。
+     パソコンでは使わないので、狭い画面のときだけ出す（下の @media で display を戻す） */
+  .mpanel{display:none}
+  .msheet{display:none}
+  .mpanel[hidden],.msheet[hidden]{display:none!important}
   .hint{font-size:11.5px;color:var(--muted);text-align:center;margin-top:8px;line-height:1.7}
   .hint kbd{font:inherit;font-size:11px;background:#f1f3f7;border:1px solid var(--line);
             border-bottom-width:2px;border-radius:4px;padding:1px 5px;margin:0 1px}
@@ -275,6 +283,8 @@
     .bar .grp{gap:5px}
     .bar button{padding:7px 9px}
     .bar .lbl{display:none}
+    .wideOnly{display:none}
+    .bar button.on{background:var(--accent);border-color:var(--accent);color:#fff}
     .tutbody{font-size:13px;min-height:0}
     /* 設定はハンバーガーを押したときだけ、再生ボタンの下の行に開く */
     #btnMenu{order:0}
@@ -305,6 +315,54 @@
     .admodal .box{padding:14px 0;border-radius:0}
     .admodal .cap{padding:0 12px}
     .admodal .foot{padding:0 12px}
+
+    /* ---------- スマホ用の編集パネル ---------- */
+    .mpanel{display:block;background:var(--chrome);border-top:1px solid var(--line);
+            padding:5px 6px calc(20px + env(safe-area-inset-bottom));flex:none;
+            user-select:none;-webkit-user-select:none}
+    .mstatus{font-size:11.5px;color:var(--muted);text-align:center;
+             min-height:16px;line-height:16px;margin-bottom:4px;
+             white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .mrow{display:flex;gap:4px;align-items:stretch}
+    .mtop{margin-bottom:5px}
+    .mpanel button{font:inherit;background:#fff;border:1px solid var(--line);
+                   border-radius:7px;color:var(--ink);padding:0;
+                   -webkit-tap-highlight-color:transparent}
+    .mpanel button:active{background:var(--accent-soft)}
+    .mpanel button:disabled{opacity:.3}
+    .mpanel button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+    .mseg{flex:none}
+    .mseg button{width:46px;height:38px;font-size:13px}
+    .mdur{flex:none;width:76px;height:38px;font-size:12px;display:flex;
+          align-items:center;justify-content:center;gap:3px}
+    .mdur svg{display:block}
+    .moct{flex:1;display:flex;gap:3px}
+    .moct button{flex:1;height:38px;font-size:11px;line-height:1.25}
+    .moct button b{display:block;font-size:12px;font-weight:600}
+    .moct button i{display:block;font-style:normal;font-size:10px;color:var(--muted)}
+    .moct button.on i{color:#dce7ff}
+
+    /* ドレミ7つ＋休符。親指で押せるよう高さを広めに取る */
+    .mkeys{display:flex;gap:4px;margin-bottom:5px}
+    .mkeys button{flex:1;height:52px;font-size:13px;line-height:1.2;min-width:0}
+    .mkeys button b{display:block;font-size:14px;font-weight:600}
+    .mkeys button i{display:block;font-style:normal;font-size:10px;color:var(--muted)}
+    .mkeys button.on i{color:#dce7ff}
+    .mkeys button.rest{background:#f6f7f9}
+
+    .macts button{flex:1;height:36px;font-size:12px;min-width:0}
+
+    /* 長さを選ぶシート */
+    .msheet{display:block;position:fixed;inset:0;z-index:60;
+            background:rgba(16,22,34,.45);align-items:flex-end}
+    .msheet .box{position:absolute;left:0;right:0;bottom:0;background:var(--chrome);
+                 border-radius:14px 14px 0 0;padding:12px 10px calc(12px + env(safe-area-inset-bottom))}
+    .msheet .h{font-size:13px;color:var(--muted);text-align:center;margin-bottom:8px}
+    .msheet .durs{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+    .msheet .durs button{height:54px}
+    .msheet .close{display:block;width:100%;margin-top:10px;height:40px;
+                   background:#fff;border:1px solid var(--line);border-radius:8px;font:inherit}
   }
 
   @media print{
@@ -397,13 +455,14 @@ function writeAdmaxTag(tags) {
 
   <div class="sep"></div>
   <div class="grp actions">
-    <button class="pri" id="btnPlayAll" title="Shift+Space">▶ 最初から</button>
-    <button id="btnPlayHere" title="Space">▶ ここから</button>
-    <button id="btnMetro" title="メトロノーム">🔔<span class="lbl"> 拍</span></button>
+    <button class="pri" id="btnPlayAll" title="Shift+Space"><span class="wideOnly">▶ 最初から</span><span class="narrowOnly">⏮</span></button>
+    <button id="btnPlayHere" title="Space"><span class="wideOnly">▶ ここから</span><span class="narrowOnly">▶</span></button>
     <button id="btnSilent" title="音を出さずに譜面の進行だけ表示します（自分で弾くときの練習用）">🔇<span class="lbl"> 無音</span></button>
+    <button id="btnEdit" class="narrowOnly" title="スマホで音符を書き換えるパネルを出します">✏️</button>
     <button id="btnMic" class="editOnly" title="マイクで弾いた音を楽譜にします">🎤 マイク</button>
-    <button id="btnFall" title="楽譜どおりにノーツが降ってくる練習画面">🎵<span class="lbl"> 練習</span></button>
     <button id="btnSongs" title="曲の保存・読み込み・共有">📁<span class="lbl"> 曲・保存</span></button>
+    <button id="btnFall" title="楽譜どおりにノーツが降ってくる練習画面">🎵<span class="lbl"> 練習</span></button>
+    <button id="btnMetro" title="メトロノーム">🔔<span class="lbl"> 拍</span></button>
     <button id="btnHelp" title="使い方を見る">❓<span class="lbl"> 使い方</span></button>
     <input type="file" id="file" accept=".json,application/json" hidden>
   </div>
@@ -666,6 +725,40 @@ function writeAdmaxTag(tags) {
   </div>
   </div>
   <button class="paneltoggle" id="panelToggle" aria-controls="panelBody" aria-expanded="true"></button>
+</div>
+
+<!-- スマホで音符を書き換えるためのパネル。上の ✏️ を押したときだけ出る -->
+<div class="mpanel" id="mpanel" hidden>
+  <div class="mstatus" id="mstatus"></div>
+  <div class="mrow mtop">
+    <div class="seg mseg" id="mMode">
+      <button id="mModeAdd" title="押すたびに音符が増えます">追加</button>
+      <button id="mModeEdit" title="選んでいる音符の高さを変えます">変更</button>
+    </div>
+    <button class="mdur" id="mDur" title="音符の長さを選びます"></button>
+    <div class="moct" id="moct"></div>
+  </div>
+  <div class="mkeys" id="mkeys"></div>
+  <div class="mrow macts">
+    <button id="mPrev" title="前の音符へ">◀</button>
+    <button id="mNext" title="次の音符へ（末尾なら追加）">▶</button>
+    <button id="mDot" title="付点">・</button>
+    <button id="mTie" title="タイ">タイ</button>
+    <button id="mChordUp" title="和音に1音足す">和+</button>
+    <button id="mChordDn" title="和音から1音外す">和−</button>
+    <button id="mIns" title="ここに音符を挿入">挿入</button>
+    <button id="mDel" title="この音符を削除">削除</button>
+    <button id="mUndo" title="元に戻す">↩</button>
+  </div>
+</div>
+
+<!-- 長さを選ぶシート（スマホ用） -->
+<div class="msheet" id="mdurSheet" hidden>
+  <div class="box">
+    <div class="h">音符の長さ</div>
+    <div class="durs" id="mdurs"></div>
+    <button class="close" id="mdurClose">閉じる</button>
+  </div>
 </div>
 
 <script src="./vendor/vexflow-bravura.js"></script>

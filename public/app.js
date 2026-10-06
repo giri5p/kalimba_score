@@ -6,7 +6,7 @@
    ここを書き換えると、すでに読んだ人にも使い方モーダルがもう一度出ます。
    機能を足したときや説明を直したときに、日付を今日にしてください。
    （読んだかどうかは、この文字列そのものを覚えておく形で判定しています） */
-const APP_VERSION = '2026-09-30';
+const APP_VERSION = '2026-10-06';
 
 /* index.html の <title> と同じもの。曲名が付いていないときはこれに戻す */
 const SITE_TITLE = 'カリンバ楽譜メーカー｜初心者でもドレミ・数字譜つきの楽譜を無料で作成';
@@ -1322,6 +1322,7 @@ function syncPanel() {
       '　' + dn +
       (n.tie ? '　タイ' : '') +
       (clipboard.length ? '　［コピー済み ' + clipboard.length + ' 個］' : '');
+  syncMPanel();
   /* 見出し */
   document.getElementById('sheetTitle').textContent = state.title;
   document.getElementById('sheetMeta').textContent =
@@ -1334,8 +1335,9 @@ function syncPanel() {
     : SITE_TITLE;
 }
 
-function buildDurPalette() {
-  const host = document.getElementById('durs');
+function buildDurPalette(id) {
+  const host = document.getElementById(id || 'durs');
+  if (!host) return;
   host.innerHTML = '';
   DURS.forEach(d => {
     const b = document.createElement('button');
@@ -1343,7 +1345,7 @@ function buildDurPalette() {
     b.innerHTML = durIcon(d.c, d.dot) +
                   '<small>' + DNAME[d.c] + (d.dot ? '．' : '') + '</small>';
     b.title = DNAME[d.c] + (d.dot ? '付点' : '') + '音符';
-    b.addEventListener('click', () => { setDur(d.c, d.dot); blurAll(); });
+    b.addEventListener('click', () => { setDur(d.c, d.dot); closeDurSheet(); blurAll(); });
     host.appendChild(b);
   });
 }
@@ -1566,8 +1568,13 @@ function syncPlayButtons() {
   const all = document.getElementById('btnPlayAll');
   const here = document.getElementById('btnPlayHere');
   if (!all || !here) return;
-  all.textContent  = (playing && playMode === 'all')  ? '■ 停止' : '▶ 最初から';
-  here.textContent = (playing && playMode === 'here') ? '■ 停止' : '▶ ここから';
+  /* textContent で書き換えると、スマホ用の短い表示（⏮ ▶）が消えて
+     ボタンが大きくなってしまうので、広い画面用と狭い画面用を分けて入れる */
+  const label = (stopping, wide, narrow) =>
+    '<span class="wideOnly">' + (stopping ? '■ 停止' : wide) + '</span>' +
+    '<span class="narrowOnly">' + (stopping ? '■' : narrow) + '</span>';
+  all.innerHTML  = label(playing && playMode === 'all',  '▶ 最初から', '⏮');
+  here.innerHTML = label(playing && playMode === 'here', '▶ ここから', '▶');
 }
 function togglePlay(mode) {
   if (playing && playMode === mode) { stop(); return; }
@@ -2460,12 +2467,131 @@ function loadFromHash() {
    音符を選ぶ（＝そこから再生する）操作だけは残す */
 const NARROW = '(max-width:760px)';
 let readOnly = window.matchMedia(NARROW).matches;
+/* スマホで編集パネルを出しているあいだは、狭い画面でも編集できる */
+let mobileEdit = false;
 function syncMode() {
-  const ro = window.matchMedia(NARROW).matches;
+  const narrow = window.matchMedia(NARROW).matches;
+  if (!narrow && mobileEdit) setMobileEdit(false, true);
+  const ro = narrow && !mobileEdit;
   if (ro === readOnly) return false;
   readOnly = ro;
   if (readOnly) { setMetro(false); if (mic.on) micStop(); }
   return true;
+}
+
+/* ============================================================
+   16b. スマホ用の編集パネル
+   ------------------------------------------------------------
+   実物と同じ並びの鍵盤（17〜21キー）は画面幅に入らないので、
+   ドレミ 7 つ＋休符を大きく並べ、どのオクターブかは上で選ぶ形にした。
+   数字譜の 1 / 1* / 1** という書き方とそのまま対応する。
+   ============================================================ */
+const MOCT_NAME = { '-2': '最低', '-1': '低', '0': '標準', '1': '高', '2': '最高', '3': 'さらに高' };
+let mOct = 0;                       // いま選んでいるオクターブ（0 = 基準）
+
+/* その楽器にあるオクターブの一覧。17キーなら 0,1,2 */
+function mOctList() {
+  const lo = Math.floor(minStep() / 7), hi = Math.floor(maxStep() / 7);
+  const out = [];
+  for (let g = lo; g <= hi; g++) out.push(g);
+  return out;
+}
+function buildMOct() {
+  const host = document.getElementById('moct');
+  if (!host) return;
+  host.innerHTML = '';
+  const list = mOctList();
+  if (list.indexOf(mOct) < 0) mOct = list.indexOf(0) >= 0 ? 0 : list[0];
+  list.forEach(g => {
+    const b = document.createElement('button');
+    b.dataset.oct = g;
+    b.innerHTML = '<b>' + (MOCT_NAME[g] || ('8va' + g)) + '</b>' +
+                  '<i>' + numberOf(g * 7) + '</i>';
+    b.addEventListener('click', () => { mOct = g; buildMKeys(); syncPanel(); blurAll(); });
+    host.appendChild(b);
+  });
+}
+
+/* ドレミ 7 つ＋休符。いま選んでいるオクターブのぶんだけ出す */
+function buildMKeys() {
+  const host = document.getElementById('mkeys');
+  if (!host) return;
+  host.innerHTML = '';
+  for (let d = 0; d < 7; d++) {
+    const step = mOct * 7 + d;
+    const b = document.createElement('button');
+    b.dataset.step = step;
+    b.disabled = step < minStep() || step > maxStep();
+    b.innerHTML = '<b>' + SOLFEGE[d] + '</b><i>' + numberOf(step) + '</i>';
+    b.addEventListener('click', () => { applyStep(step); previewTone(step); blurAll(); });
+    host.appendChild(b);
+  }
+  const r = document.createElement('button');
+  r.className = 'rest';
+  r.innerHTML = '<b>休</b><i>0</i>';
+  r.addEventListener('click', () => { inputRest(); blurAll(); });
+  host.appendChild(r);
+}
+
+/* パネルの表示を今の状態に合わせる。syncPanel から呼ばれる */
+function syncMPanel() {
+  const panel = document.getElementById('mpanel');
+  if (!panel || panel.hidden) return;
+  const n = cur();
+  document.getElementById('mstatus').textContent =
+    selCount() > 1
+      ? (selStart() + 1) + '〜' + (selEnd() + 1) + ' 個目を選択中（' + selCount() + ' 個）'
+      : (cursor + 1) + ' / ' + state.notes.length + ' 個目　' + labelText(n) + '　' +
+        DNAME[n.d] + (n.dot ? '付点' : '') + (n.rest ? '休符' : '音符') + (n.tie ? '　タイ' : '');
+
+  const dur = document.getElementById('mDur');
+  dur.innerHTML = durIcon(n.d, n.dot) + '<span>' + DNAME[n.d] + (n.dot ? '．' : '') + '</span>';
+
+  document.getElementById('mModeAdd').classList.toggle('on', state.inputMode !== 'edit');
+  document.getElementById('mModeEdit').classList.toggle('on', state.inputMode === 'edit');
+  document.querySelectorAll('#moct button').forEach(b =>
+    b.classList.toggle('on', +b.dataset.oct === mOct));
+  document.querySelectorAll('#mkeys button[data-step]').forEach(b =>
+    b.classList.toggle('on', !n.rest && n.p.indexOf(+b.dataset.step) >= 0));
+  document.querySelector('#mkeys button.rest').classList.toggle('on', !!n.rest);
+  document.getElementById('mDot').classList.toggle('on', !!n.dot);
+  document.getElementById('mTie').classList.toggle('on', !!n.tie);
+
+  /* 長さパレットも開いていればそろえる */
+  document.querySelectorAll('#mdurs button').forEach(b => {
+    b.classList.toggle('on', b.dataset.c === n.d && (b.dataset.dot === '1') === !!n.dot);
+  });
+}
+
+function openDurSheet() {
+  const sh = document.getElementById('mdurSheet');
+  if (!sh) return;
+  sh.hidden = false;
+  syncPanel();
+}
+function closeDurSheet() {
+  const sh = document.getElementById('mdurSheet');
+  if (sh) sh.hidden = true;
+}
+
+/* スマホの編集パネルを出し入れする */
+function setMobileEdit(on, quiet) {
+  mobileEdit = !!on;
+  const panel = document.getElementById('mpanel');
+  const btn = document.getElementById('btnEdit');
+  if (panel) panel.hidden = !mobileEdit;
+  if (btn) btn.classList.toggle('on', mobileEdit);
+  if (!mobileEdit) closeDurSheet();
+  if (mobileEdit) {
+    /* 選んでいる音符のオクターブに合わせておく（探す手間を減らす） */
+    const n = cur();
+    if (n && !n.rest && n.p.length) mOct = Math.floor(Math.min.apply(null, n.p) / 7);
+    buildMOct(); buildMKeys();
+  }
+  if (quiet) return;
+  syncMode();
+  render();
+  syncPanel();
 }
 
 /* ============================================================
@@ -2493,9 +2619,10 @@ const TUT = [
       '<li>テンポと拍子は曲の途中で変えられません</li>' +
       '<li>和音は「同時に鳴らす音」として扱うだけで、パート分けはできません</li>' +
       '</ul>' +
-      '<div class="tip"><b>スマホはほぼ閲覧専用です。</b>' +
-      '画面が狭い端末では音符の書き換えができません。' +
-      '<b>作るのはパソコン、見るのはスマホ</b>（できた曲はリンクにして送れます）という想定です。</div>' +
+      '<div class="tip"><b>スマホでも音符を書き換えられます。</b>' +
+      '上の <b>✏️</b> を押すと、下に編集パネルが出ます。' +
+      'ただし一度に見える小節が少ないので、<b>作るのはパソコンを推奨します</b>' +
+      '（できた曲はリンクにしてスマホへ送れます）。</div>' +
       '<p style="margin:0"><a href="about.html">作った経緯やデータの扱いについて（このサイトについて）</a></p>'
   },
   {
@@ -2655,9 +2782,13 @@ const TUT = [
       '<b>これをスマホに送れば、同じ楽譜がそのまま開きます</b></li>' +
       '<li><b>PNG</b> … 画像として保存　<b>印刷</b> … 紙や PDF へ（操作パネルは印刷されません）</li>' +
       '</ul>' +
-      '<p><b>スマホで開いたとき</b>は、画面が狭いので<b>見るための表示</b>になります。' +
+      '<p><b>スマホで開いたとき</b>は、はじめは<b>楽譜を見るだけの表示</b>になります。' +
       '下の入力パネルは消え、上は <kbd>☰</kbd> と再生ボタンだけ。' +
       '<kbd>☰</kbd> を押すとテンポや表示の設定が開きます。</p>' +
+      '<p>音符を書き換えたいときは、上の <b>✏️</b> を押してください。' +
+      '下に<b>編集パネル</b>が出ます。ドレミ 7 つと休符が並び、' +
+      'どの高さのドかは「標準／高／最高」で選びます。' +
+      '長さは <b>♪</b> のボタンから選び、直したい音符は<b>楽譜を直接タップ</b>します。</p>' +
       '<div class="tip">この説明は、右上の <b>❓ 使い方</b> からいつでも読み直せます。</div>'
   }
 ];
@@ -2678,10 +2809,10 @@ function closeTutorial() {
 function renderTutorial() {
   const t = TUT[tutStep];
   document.getElementById('tutTitle').textContent = t.title;
-  /* スマホは見る専用なので、最初にそれを伝えておく */
-  const note = (readOnly && tutStep === 0)
+  /* スマホで開いた人に、編集パネルの出し方を最初に伝えておく */
+  const note = (window.matchMedia(NARROW).matches && tutStep === 0)
     ? '<p style="margin:0;font-size:12.5px;color:#31415c">' +
-      '↑ いま開いているこの画面が、その<b>見るための表示</b>です。</p>'
+      '↑ いま開いているこの画面がスマホの表示です。上の <b>✏️</b> で編集パネルが出ます。</p>'
     : '';
   document.getElementById('tutBody').innerHTML = t.html + note;
   const dots = document.getElementById('tutDots');
@@ -3175,6 +3306,7 @@ function bindUi() {
        音域の外に出た音もそのまま残り、譜面に出て鳴ります */
     state.preset = e.target.value;
     buildTines();
+    buildMOct(); buildMKeys();        // スマホ側の鍵盤も作り直す
     refresh();
     blurAll();                        // ↑↓ が選択欄に取られないように
   });
@@ -3184,6 +3316,23 @@ function bindUi() {
     refresh();
   });
   tog('sSol', 'showSol'); tog('sNum', 'showNum'); tog('sLet', 'showLet');
+
+  /* ---- スマホ用の編集パネル ---- */
+  $('btnEdit').addEventListener('click', () => { setMobileEdit(!mobileEdit); blurAll(); });
+  $('mModeAdd').addEventListener('click',  () => { setInputMode('add');  syncPanel(); blurAll(); });
+  $('mModeEdit').addEventListener('click', () => { setInputMode('edit'); syncPanel(); blurAll(); });
+  $('mDur').addEventListener('click',     () => { openDurSheet(); blurAll(); });
+  $('mdurClose').addEventListener('click', () => { closeDurSheet(); blurAll(); });
+  $('mdurSheet').addEventListener('click', e => { if (e.target.id === 'mdurSheet') closeDurSheet(); });
+  $('mPrev').addEventListener('click',    () => { gotoPrev(); blurAll(); });
+  $('mNext').addEventListener('click',    () => { gotoNext(); blurAll(); });
+  $('mDot').addEventListener('click',     () => { toggleDot(); blurAll(); });
+  $('mTie').addEventListener('click',     () => { toggleTie(); blurAll(); });
+  $('mChordUp').addEventListener('click', () => { addChordTone(); blurAll(); });
+  $('mChordDn').addEventListener('click', () => { removeChordTone(); blurAll(); });
+  $('mIns').addEventListener('click',     () => { insertNote(); blurAll(); });
+  $('mDel').addEventListener('click',     () => { deleteNote(); blurAll(); });
+  $('mUndo').addEventListener('click',    () => { undo(); blurAll(); });
 
   $('viewStaff').addEventListener('click', () => { setNumberView(false); blurAll(); });
   $('viewNum').addEventListener('click',   () => { setNumberView(true);  blurAll(); });
@@ -3375,6 +3524,7 @@ function boot() {
   if (!state.notes.length) state.notes = [newNote(clampStep(0), 'q', false, true)];
   syncInputs();
   buildDurPalette();
+  buildDurPalette('mdurs');      // スマホの長さシート用
   buildTines();
   refresh();
   booted = true;
