@@ -318,7 +318,7 @@
 
     /* ---------- スマホ用の編集パネル ---------- */
     .mpanel{display:block;background:var(--chrome);border-top:1px solid var(--line);
-            padding:5px 6px calc(11px + env(safe-area-inset-bottom));flex:none;
+            padding:5px 6px calc(20px + env(safe-area-inset-bottom));flex:none;
             user-select:none;-webkit-user-select:none}
     .mstatus{font-size:11.5px;color:var(--muted);text-align:center;
              min-height:16px;line-height:16px;margin-bottom:4px;
@@ -457,12 +457,12 @@ function writeAdmaxTag(tags) {
   <div class="grp actions">
     <button class="pri" id="btnPlayAll" title="Shift+Space"><span class="wideOnly">▶ 最初から</span><span class="narrowOnly">⏮</span></button>
     <button id="btnPlayHere" title="Space"><span class="wideOnly">▶ ここから</span><span class="narrowOnly">▶</span></button>
-    <button id="btnMetro" title="メトロノーム">🔔<span class="lbl"> 拍</span></button>
     <button id="btnSilent" title="音を出さずに譜面の進行だけ表示します（自分で弾くときの練習用）">🔇<span class="lbl"> 無音</span></button>
-    <button id="btnMic" class="editOnly" title="マイクで弾いた音を楽譜にします">🎤 マイク</button>
     <button id="btnEdit" class="narrowOnly" title="スマホで音符を書き換えるパネルを出します">✏️</button>
-    <button id="btnFall" title="楽譜どおりにノーツが降ってくる練習画面">🎵<span class="lbl"> 練習</span></button>
+    <button id="btnMic" class="editOnly" title="マイクで弾いた音を楽譜にします">🎤 マイク</button>
     <button id="btnSongs" title="曲の保存・読み込み・共有">📁<span class="lbl"> 曲・保存</span></button>
+    <button id="btnFall" title="楽譜どおりにノーツが降ってくる練習画面">🎵<span class="lbl"> 練習</span></button>
+    <button id="btnMetro" title="メトロノーム">🔔<span class="lbl"> 拍</span></button>
     <button id="btnHelp" title="使い方を見る">❓<span class="lbl"> 使い方</span></button>
     <input type="file" id="file" accept=".json,application/json" hidden>
   </div>
