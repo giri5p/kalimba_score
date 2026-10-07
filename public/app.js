@@ -23,17 +23,44 @@ const SEMITONE = [0, 2, 4, 5, 7, 9, 11];
 
 const octOf = s => 4 + Math.floor(s / 7);
 const degOf = s => ((s % 7) + 7) % 7;
-const midiOf = s => (octOf(s) + 1) * 12 + SEMITONE[degOf(s)];
-const vexKeyOf = s => LETTERS[degOf(s)].toLowerCase() + '/' + octOf(s);
-const solfegeOf = s => SOLFEGE[degOf(s)];
+
+/* 臨時記号。1 = ♯（半音上げる）、-1 = ♭（半音下げる）、0 = なし。
+   カリンバには半音のキーがないので、ふつうは 0 のままです。
+   半音の出せるように改造したカリンバや、書き留めておきたいときのための機能です。 */
+const ACC_MARK = { '1': '♯', '-1': '♭' };
+const accMark = a => ACC_MARK[a] || '';
+
+const midiOf = (s, a) => (octOf(s) + 1) * 12 + SEMITONE[degOf(s)] + (a || 0);
+const vexKeyOf = (s, a) =>
+  LETTERS[degOf(s)].toLowerCase() + (a > 0 ? '#' : a < 0 ? 'b' : '') + '/' + octOf(s);
+const solfegeOf = (s, a) => SOLFEGE[degOf(s)] + accMark(a);
 /* オクターブ記号: 基準オクターブ(4)は無印、上は * 、下は . を付け足す */
 function octMark(s) {
   const o = octOf(s);
   return o > 4 ? '*'.repeat(o - 4) : o < 4 ? '.'.repeat(4 - o) : '';
 }
 /* カリンバ数字譜 (1〜7) と音名 (C〜B) は同じオクターブ記号でそろえる */
-const numberOf = s => String(degOf(s) + 1) + octMark(s);
-const letterOf = s => LETTERS[degOf(s)] + octMark(s);
+/* 数字譜では記号を数字の前に置く（♯1）。音名はうしろ（C♯） */
+const numberOf = (s, a) => accMark(a) + String(degOf(s) + 1) + octMark(s);
+const letterOf = (s, a) => LETTERS[degOf(s)] + accMark(a) + octMark(s);
+
+/* 音符が持つ臨時記号は、ステップ番号をキーにした入れ物に入れる。
+   こうしておくと、和音の音を並べ替えたり抜いたりしても付け替えが要らない */
+const accOf = (n, s) => (n && n.a && n.a[s]) || 0;
+function setAcc(n, s, v) {
+  if (!v) {
+    if (n.a) { delete n.a[s]; if (!Object.keys(n.a).length) delete n.a; }
+    return;
+  }
+  if (!n.a) n.a = {};
+  n.a[s] = v;
+}
+/* いま鳴らさない音に付いた記号は捨てる（音を消したあとの後始末） */
+function pruneAcc(n) {
+  if (!n.a) return;
+  Object.keys(n.a).forEach(k => { if (n.rest || n.p.indexOf(+k) < 0) delete n.a[k]; });
+  if (!Object.keys(n.a).length) delete n.a;
+}
 
 /* キーの数と音域は自由に決められます（下の KEY_MIN〜KEY_MAX、BASE_MIN〜BASE_MAX）。
    ここに並べてあるのは、昔の曲や共有リンクに入っている名前を読み解くための対応表です。 */
@@ -227,10 +254,19 @@ function deserialize(json) {
      丸めてしまうと、カリンバを選び直しただけで曲が書き換わり、
      開き直すたびに同じことが起きて元に戻せなくなるためです。
      （音域の外に出た音も、譜面には出ますし鳴ります） */
-  state.notes = o.notes.map(n => ({
-    p: (n.p && n.p.length ? n.p : [0]).map(x => Math.max(-21, Math.min(35, x | 0))),
-    d: DEN[n.d] ? n.d : 'q', dot: !!n.dot, rest: !!n.rest, tie: !!n.tie
-  }));
+  state.notes = o.notes.map(n => {
+    const out = {
+      p: (n.p && n.p.length ? n.p : [0]).map(x => Math.max(-21, Math.min(35, x | 0))),
+      d: DEN[n.d] ? n.d : 'q', dot: !!n.dot, rest: !!n.rest, tie: !!n.tie
+    };
+    /* ♯ ♭（持っている音符だけ） */
+    if (n.a && typeof n.a === 'object') {
+      const a = {};
+      Object.keys(n.a).forEach(k => { const v = +n.a[k]; if (v === 1 || v === -1) a[+k] = v; });
+      if (Object.keys(a).length) out.a = a;
+    }
+    return out;
+  });
   if (!state.notes.length) state.notes = [newNote(clampStep(0), 'q', false, true)];
   cursor = 0;
 }
@@ -329,14 +365,17 @@ function svgText(parent, x, y, str, size, fill, weight) {
 function labelsFor(n) {
   if (n.rest) return { sol: [], num: [], let: [] };
   const ps = n.p.slice().sort((a, b) => b - a);      // 上が高い音
-  return { sol: ps.map(solfegeOf), num: ps.map(numberOf), let: ps.map(letterOf) };
+  return { sol: ps.map(s => solfegeOf(s, accOf(n, s))),
+           num: ps.map(s => numberOf(s, accOf(n, s))),
+           let: ps.map(s => letterOf(s, accOf(n, s))) };
 }
 
 /* ステータス行など、1 行で書きたいとき用 */
 function labelText(n) {
   if (n.rest) return '休符';
   const ps = n.p.slice().sort((a, b) => a - b);
-  const j = f => ps.length === 1 ? f(ps[0]) : '(' + ps.map(f).join('・') + ')';
+  const j = f => ps.length === 1 ? f(ps[0], accOf(n, ps[0]))
+                                 : '(' + ps.map(s => f(s, accOf(n, s))).join('・') + ')';
   return j(solfegeOf) + '　' + j(numberOf) + '　' + j(letterOf);
 }
 
@@ -855,8 +894,16 @@ function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones, dro
     } else {
       /* auto_stem を付けないと、VexFlow は棒を全部上向きにする。
          付けると、真ん中の線より上の音は下向き・下の音は上向きになる */
-      sn = new F.StaveNote({ keys: n.p.slice().sort((a, b) => a - b).map(vexKeyOf),
+      const ps = n.p.slice().sort((a, b) => a - b);
+      sn = new F.StaveNote({ keys: ps.map(x => vexKeyOf(x, accOf(n, x))),
                              duration: n.d, auto_stem: true });
+      /* ♯ ♭ は音符に付ける飾りとして足す */
+      ps.forEach((x, k) => {
+        const a = accOf(n, x);
+        if (!a) return;
+        try { sn.addModifier(new F.Accidental(a > 0 ? '#' : 'b'), k); }
+        catch (e) { try { sn.addAccidental(k, new F.Accidental(a > 0 ? '#' : 'b')); } catch (e2) {} }
+      });
     }
     if (n.dot) F.Dot.buildAndAttach([sn], { all: true });
     return sn;
@@ -1011,6 +1058,7 @@ function hidePlayhead() {
    ============================================================ */
 function refresh() {
   if (!state.notes.length) { state.notes = [newNote(clampStep(0), 'q', false, true)]; cursor = 0; }
+  state.notes.forEach(pruneAcc);     // 消した音に付いていた ♯ ♭ を片付ける
   cursor = Math.max(0, Math.min(cursor, state.notes.length - 1));
   if (anchor >= state.notes.length) anchor = state.notes.length - 1;
   if (anchor === cursor) anchor = -1;
@@ -1051,11 +1099,15 @@ function movePitch(delta) {
   const one = cur();
   if (tone >= 0 && selCount() === 1 && !one.rest && tone < one.p.length) {
     const ps = one.p.slice().sort((a, b) => a - b);
-    const moved = moveStep(ps[tone], ps[tone] + delta);
+    const from = ps[tone];
+    const moved = moveStep(from, from + delta);
     ps.splice(tone, 1);
     if (ps.indexOf(moved) >= 0) { refresh(); return; }   // 同じ音が既にある
     ps.push(moved);
     ps.sort((a, b) => a - b);
+    const keep = accOf(one, from);                       // 記号も連れていく
+    setAcc(one, from, 0);
+    setAcc(one, moved, keep);
     one.p = ps;
     one.fresh = false;
     tone = ps.indexOf(moved);
@@ -1065,7 +1117,14 @@ function movePitch(delta) {
   eachSel(n => {
     if (n.rest) return;                 // 休符は音程を持たないので飛ばす
     n.fresh = false;
-    n.p = Array.from(new Set(n.p.map(s => moveStep(s, s + delta)))).sort((a, b) => a - b);
+    const was = n.a ? Object.assign({}, n.a) : null;
+    const map = {};
+    n.p.forEach(s => { map[s] = moveStep(s, s + delta); });
+    n.p = Array.from(new Set(n.p.map(s => map[s]))).sort((a, b) => a - b);
+    if (was) {                                           // 記号も一緒にずらす
+      delete n.a;
+      Object.keys(was).forEach(k => { if (map[k] != null) setAcc(n, map[k], was[k]); });
+    }
   });
   const c = cur();
   if (c.rest && selCount() === 1) { c.rest = false; c.fresh = false; c.p = c.p.map(s => moveStep(s, s + delta)); }
@@ -1155,6 +1214,28 @@ function toggleDot() {
   eachSel(n => { n.dot = to; });
   refresh();
 }
+/* ♯ ♭ を付け外しする。同じものをもう一度押すと外れる（＝ナチュラル）。
+   和音の 1 音だけ選んでいるときは、その音だけに付く */
+function setAccidental(v) {
+  pushUndo();
+  const one = cur();
+  if (tone >= 0 && selCount() === 1 && !one.rest && tone < one.p.length) {
+    const st = one.p.slice().sort((a, b) => a - b)[tone];
+    setAcc(one, st, accOf(one, st) === v ? 0 : v);
+    refresh();
+    return;
+  }
+  /* いま全部にその記号が付いているなら外す、そうでなければ付ける */
+  let allOn = true;
+  eachSel(n => { if (!n.rest) n.p.forEach(st => { if (accOf(n, st) !== v) allOn = false; }); });
+  eachSel(n => {
+    if (n.rest) return;
+    n.fresh = false;
+    n.p.forEach(st => setAcc(n, st, allOn ? 0 : v));
+  });
+  refresh();
+}
+
 function toggleTie() {
   pushUndo();
   const to = !cur().tie;
@@ -1323,6 +1404,14 @@ function syncPanel() {
   document.getElementById('btnRest').style.background = n.rest ? 'var(--accent-soft)' : '';
   document.getElementById('btnDot').style.background = n.dot ? 'var(--accent-soft)' : '';
   document.getElementById('btnTie').style.background = n.tie ? 'var(--accent-soft)' : '';
+  /* ♯ ♭ は、いま選んでいる音に付いていれば光らせる */
+  const accNow = n.rest ? 0
+    : (tone >= 0 && tone < n.p.length
+        ? accOf(n, n.p.slice().sort((a, b) => a - b)[tone])
+        : (n.p.every(st => accOf(n, st) === 1) ? 1
+           : n.p.every(st => accOf(n, st) === -1) ? -1 : 0));
+  document.getElementById('btnSharp').style.background = accNow === 1 ? 'var(--accent-soft)' : '';
+  document.getElementById('btnFlat').style.background = accNow === -1 ? 'var(--accent-soft)' : '';
   /* カリンバのキー */
   document.querySelectorAll('#tines button').forEach(b => {
     b.classList.toggle('on', !n.rest && n.p.indexOf(+b.dataset.step) >= 0);
@@ -1478,6 +1567,7 @@ function buildEvents() {
     const step = noteValue(n) * 4 * spq;
     const fresh = n.rest ? [] : n.p.filter(p => held.indexOf(p) < 0);   // 新しく鳴らす音
     evs.push({ i: i, t: t, dur: step, rest: n.rest, p: fresh,
+               accs: fresh.map(p => accOf(n, p)),
                durs: fresh.map(p => tiedLength(i, p, spq)) });
     held = (!n.rest && n.tie && ns[i + 1] && !ns[i + 1].rest)
       ? n.p.filter(p => ns[i + 1].p.indexOf(p) >= 0)
@@ -1509,7 +1599,8 @@ function play(startAt, leadIn, fromTime) {
     const spq = 60 / state.tempo;
     const n = state.notes[list[0].i];
     list[0] = Object.assign({}, list[0], {
-      p: n.p.slice(), durs: n.p.map(p => tiedLength(list[0].i, p, spq))
+      p: n.p.slice(), accs: n.p.map(p => accOf(n, p)),
+      durs: n.p.map(p => tiedLength(list[0].i, p, spq))
     });
   }
   const offset = fromTime != null ? fromTime : list[0].t;
@@ -1522,7 +1613,8 @@ function play(startAt, leadIn, fromTime) {
   syncPlayButtons();
   if (!silent) {
     list.forEach(e => {
-      e.p.forEach((s, k) => pluck(midiOf(s), t0 + e.t - offset, e.durs[k], null, myBus));
+      e.p.forEach((s, k) => pluck(midiOf(s, e.accs ? e.accs[k] : 0),
+                                  t0 + e.t - offset, e.durs[k], null, myBus));
     });
   }
   const endT = list.reduce((m, e) =>
@@ -1731,6 +1823,7 @@ function onKey(e) {
   }
   if (low === 'r') { e.preventDefault(); toggleRest(); return; }
   if (low === 't') { e.preventDefault(); toggleTie(); return; }
+  if (low === 's') { e.preventDefault(); setAccidental(e.shiftKey ? -1 : 1); return; }
   if (low === 'c') { e.preventDefault(); e.shiftKey ? removeChordTone() : addChordTone(); return; }
 }
 
@@ -2059,9 +2152,14 @@ function encodeScore() {
   const body = state.notes.map(n => {
     const di = Math.max(0, durIndex(n));
     const ps = n.rest ? [] : n.p.slice().sort((a, b) => a - b).slice(0, 4);
-    const flags = (n.rest ? 1 : 0) + (n.tie ? 2 : 0);
+    /* 4 のビットは「この音符は ♯ ♭ を持つ」。
+       立っているときだけ、音の数だけ 0=なし 1=♯ 2=♭ を後ろに足す */
+    const accs = ps.map(x => accOf(n, x));
+    const hasAcc = accs.some(a => a !== 0);
+    const flags = (n.rest ? 1 : 0) + (n.tie ? 2 : 0) + (hasAcc ? 4 : 0);
     return c64(di) + c64(flags * 8 + ps.length) +
-           ps.map(p => c64(p + PITCH_OFFSET)).join('');
+           ps.map(p => c64(p + PITCH_OFFSET)).join('') +
+           (hasAcc ? accs.map(a => c64(a > 0 ? 1 : a < 0 ? 2 : 0)).join('') : '');
   }).join('');
   const show = (state.showSol ? 1 : 0) + (state.showNum ? 2 : 0) + (state.showLet ? 4 : 0);
   return ['1', encodeURIComponent(state.title), state.tempo, state.beats, state.beatValue,
@@ -2093,9 +2191,20 @@ function decodeScore(str) {
     const count = h % 8, flags = Math.floor(h / 8);
     const p = [];
     for (let k = 0; k < count; k++) p.push(v64(body[i++]) - PITCH_OFFSET);
+    let a = null;
+    if (flags & 4) {                       // ♯ ♭ が付いている音符
+      a = {};
+      for (let k = 0; k < count; k++) {
+        const t = v64(body[i++]);
+        if (t === 1) a[p[k]] = 1; else if (t === 2) a[p[k]] = -1;
+      }
+      if (!Object.keys(a).length) a = null;
+    }
     const d = DURS[di] || DURS[5];
-    notes.push({ p: p.length ? p : [0], d: d.c, dot: d.dot,
-                 rest: !!(flags & 1), tie: !!(flags & 2) });
+    const nt = { p: p.length ? p : [0], d: d.c, dot: d.dot,
+                 rest: !!(flags & 1), tie: !!(flags & 2) };
+    if (a) nt.a = a;
+    notes.push(nt);
   }
   const show = +f[7] || 0;
   return JSON.stringify({
@@ -2589,6 +2698,11 @@ function syncMPanel() {
   document.querySelector('#mkeys button.rest').classList.toggle('on', !!n.rest);
   document.getElementById('mDot').classList.toggle('on', !!n.dot);
   document.getElementById('mTie').classList.toggle('on', !!n.tie);
+  const ma = n.rest ? 0
+    : (n.p.every(st => accOf(n, st) === 1) ? 1
+       : n.p.every(st => accOf(n, st) === -1) ? -1 : 0);
+  document.getElementById('mSharp').classList.toggle('on', ma === 1);
+  document.getElementById('mFlat').classList.toggle('on', ma === -1);
 
   /* 長さパレットも開いていればそろえる */
   document.querySelectorAll('#mdurs button').forEach(b => {
@@ -3041,6 +3155,7 @@ function buildFallNotes() {
       t: e.t,
       dur: Math.max.apply(null, e.durs.concat([e.dur])),
       steps: e.p.slice(),
+      accs: (e.accs || []).slice(),
       lanes: e.p.map(s => (lane[s] === undefined ? -1 : lane[s]))
     }));
   const last = fall.notes.length ? fall.notes[fall.notes.length - 1] : null;
@@ -3141,7 +3256,7 @@ function fallLoop() {
         c.fillStyle = '#fff';
         c.font = '700 ' + noteFs.toFixed(1) + 'px ' + FONT_JP;
         c.textAlign = 'center';
-        c.fillText(numberOf(nt.steps[k]), x + w / 2, y - 10);
+        c.fillText(numberOf(nt.steps[k], nt.accs && nt.accs[k]), x + w / 2, y - 10);
       }
       if (playing && Math.abs(dy) < 0.05 * pps) fall.hit[ln] = 0.2;   // 判定ラインを通過
     });
@@ -3361,6 +3476,8 @@ function bindUi() {
   $('mNext').addEventListener('click',    () => { gotoNext(); blurAll(); });
   $('mDot').addEventListener('click',     () => { toggleDot(); blurAll(); });
   $('mTie').addEventListener('click',     () => { toggleTie(); blurAll(); });
+  $('mSharp').addEventListener('click',   () => { setAccidental(1); blurAll(); });
+  $('mFlat').addEventListener('click',    () => { setAccidental(-1); blurAll(); });
   $('mChordUp').addEventListener('click', () => { addChordTone(); blurAll(); });
   $('mChordDn').addEventListener('click', () => { removeChordTone(); blurAll(); });
   $('mIns').addEventListener('click',     () => { insertNote(); blurAll(); });
@@ -3389,6 +3506,8 @@ function bindUi() {
   $('btnRest').addEventListener('click', () => { toggleRest(); blurAll(); });
   $('btnDot').addEventListener('click', () => { toggleDot(); blurAll(); });
   $('btnTie').addEventListener('click', () => { toggleTie(); blurAll(); });
+  $('btnSharp').addEventListener('click', () => { setAccidental(1); blurAll(); });
+  $('btnFlat').addEventListener('click',  () => { setAccidental(-1); blurAll(); });
   $('btnChord').addEventListener('click', () => { addChordTone(); blurAll(); });
   $('btnChordDel').addEventListener('click', () => { removeChordTone(); blurAll(); });
   $('btnIns').addEventListener('click', () => { insertNote(); blurAll(); });
