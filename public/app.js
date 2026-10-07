@@ -35,7 +35,10 @@ function octMark(s) {
 const numberOf = s => String(degOf(s) + 1) + octMark(s);
 const letterOf = s => LETTERS[degOf(s)] + octMark(s);
 
-/* カリンバのプリセット: base = 最低音のステップ番号, count = キー数 */
+/* キーの数と音域は自由に決められます（下の KEY_MIN〜KEY_MAX、BASE_MIN〜BASE_MAX）。
+   ここに並べてあるのは、昔の曲や共有リンクに入っている名前を読み解くための対応表です。 */
+const KEY_MIN = 5, KEY_MAX = 34;          // キーの数
+const BASE_MIN = -21, BASE_MAX = 21;      // いちばん低い音
 const PRESETS = [
   { id: '17', label: '17キー (C〜E**)',  base: 0, count: 17 },
   /* 21キーは 17キーの「下」に低音4キー（ファ・ソ・ラ・シ）が足されたもの。
@@ -46,6 +49,8 @@ const PRESETS = [
   { id: '8',  label: '8キー (C〜C*)',    base: 0, count: 8 }
 ];
 const presetById = id => PRESETS.find(p => p.id === id) || PRESETS[0];
+const clampCount = n => Math.max(KEY_MIN, Math.min(KEY_MAX, n | 0));
+const clampBase  = n => Math.max(BASE_MIN, Math.min(BASE_MAX, n | 0));
 
 /* 実物のカリンバの並び: 中央が最低音で、左右に交互に高くなる */
 function tineOrder(count) {
@@ -111,7 +116,7 @@ const state = {
   tempo: 90,
   beats: 4,
   beatValue: 4,
-  preset: '17',
+  base: 0, count: 17,                 // いちばん低い音と、キーの数
   notes: [],
   showSol: true, showNum: true, showLet: true,
   perLine: 4,            // 1 段に並べる小節数
@@ -142,7 +147,13 @@ function selectRange(a, b) {
 /* 選択中の音符すべてに処理を適用する */
 function eachSel(fn) { for (let i = selStart(); i <= selEnd(); i++) fn(state.notes[i], i); }
 
-const P = () => presetById(state.preset);
+/* いま選んでいるカリンバ。label は画面や印刷に出す見出し用 */
+function P() {
+  const count = clampCount(state.count);
+  const base = clampBase(state.base);
+  return { base: base, count: count,
+           label: count + 'キー (' + letterOf(base) + '〜' + letterOf(base + count - 1) + ')' };
+}
 const minStep = () => P().base;
 const maxStep = () => P().base + P().count - 1;
 const clampStep = s => Math.max(minStep(), Math.min(maxStep(), s));
@@ -186,7 +197,8 @@ function redo() {
 
 function serialize() {
   return JSON.stringify({ v: 1, title: state.title, tempo: state.tempo,
-    beats: state.beats, beatValue: state.beatValue, preset: state.preset,
+    beats: state.beats, beatValue: state.beatValue,
+    base: state.base, count: state.count,
     showSol: state.showSol, showNum: state.showNum, showLet: state.showLet,
     inputMode: state.inputMode, perLine: state.perLine, notes: state.notes }, null, 1);
 }
@@ -197,7 +209,14 @@ function deserialize(json) {
   state.tempo = o.tempo || 90;
   state.beats = o.beats || 4;
   state.beatValue = o.beatValue || 4;
-  state.preset = o.preset || '17';
+  /* 昔の曲は preset（17 や 21 といった名前）で入っているので、そこから組み立てる */
+  if (typeof o.count === 'number') {
+    state.count = clampCount(o.count);
+    state.base = clampBase(typeof o.base === 'number' ? o.base : 0);
+  } else {
+    const q = presetById(o.preset || '17');
+    state.base = q.base; state.count = q.count;
+  }
   if (typeof o.showSol === 'boolean') state.showSol = o.showSol;
   if (typeof o.showNum === 'boolean') state.showNum = o.showNum;
   if (typeof o.showLet === 'boolean') state.showLet = o.showLet;
@@ -1322,6 +1341,7 @@ function syncPanel() {
       '　' + dn +
       (n.tie ? '　タイ' : '') +
       (clipboard.length ? '　［コピー済み ' + clipboard.length + ' 個］' : '');
+  syncKeyUi();
   syncMPanel();
   /* 見出し */
   document.getElementById('sheetTitle').textContent = state.title;
@@ -2045,7 +2065,19 @@ function encodeScore() {
   }).join('');
   const show = (state.showSol ? 1 : 0) + (state.showNum ? 2 : 0) + (state.showLet ? 4 : 0);
   return ['1', encodeURIComponent(state.title), state.tempo, state.beats, state.beatValue,
-          state.preset, state.perLine, show, state.inputMode, body].join(',');
+          state.base + ':' + state.count,
+          state.perLine, show, state.inputMode, body].join(',');
+}
+
+/* 共有リンクの 6 番目。新しいリンクは「-4:21」、昔のリンクは「21」 */
+function keyField(v) {
+  const t = String(v == null ? '17' : v);
+  if (t.indexOf(':') >= 0) {
+    const a = t.split(':');
+    return { base: clampBase(+a[0] || 0), count: clampCount(+a[1] || 17) };
+  }
+  const q = presetById(t);
+  return { base: q.base, count: q.count };
 }
 
 function decodeScore(str) {
@@ -2068,7 +2100,8 @@ function decodeScore(str) {
   const show = +f[7] || 0;
   return JSON.stringify({
     v: 1, title: decodeURIComponent(f[1] || '無題の曲'), tempo: +f[2] || 90,
-    beats: +f[3] || 4, beatValue: +f[4] || 4, preset: f[5] || '17', perLine: +f[6] || 4,
+    beats: +f[3] || 4, beatValue: +f[4] || 4, perLine: +f[6] || 4,
+    base: keyField(f[5]).base, count: keyField(f[5]).count,
     showSol: !!(show & 1), showNum: !!(show & 2), showLet: !!(show & 4),
     inputMode: f[8] || 'edit', notes: notes
   });
@@ -3282,12 +3315,6 @@ function bindFallDrag(cv) {
 function bindUi() {
   const $ = id => document.getElementById(id);
 
-  const ps = $('preset');
-  PRESETS.forEach(p => {
-    const o = document.createElement('option');
-    o.value = p.id; o.textContent = p.label;
-    ps.appendChild(o);
-  });
 
   $('title').addEventListener('input', e => { state.title = e.target.value; syncPanel(); autosave(); });
   $('tempo').addEventListener('change', e => {
@@ -3300,16 +3327,22 @@ function bindUi() {
     refresh();
     blurAll();                        // ↑↓ が選択欄に取られないように
   });
-  ps.addEventListener('change', e => {
-    /* カリンバを変えても、楽譜には手を触れません。
-       変わるのは下に並ぶ鍵盤と、数字の振り方だけです。
-       音域の外に出た音もそのまま残り、譜面に出て鳴ります */
-    state.preset = e.target.value;
+  /* カリンバのキー数と音域を変えても、楽譜には手を触れません。
+     変わるのは下に並ぶ鍵盤と、数字の振り方だけです。
+     音域の外に出た音もそのまま残り、譜面に出て鳴ります */
+  function setKeys(base, count) {
+    state.base = clampBase(base);
+    state.count = clampCount(count);
     buildTines();
     buildMOct(); buildMKeys();        // スマホ側の鍵盤も作り直す
     refresh();
-    blurAll();                        // ↑↓ が選択欄に取られないように
+  }
+  $('keyCount').addEventListener('change', e => {
+    setKeys(state.base, +e.target.value || 17);
+    blurAll();                        // ↑↓ が入力欄に取られないように
   });
+  $('baseDown').addEventListener('click', () => { setKeys(state.base - 1, state.count); blurAll(); });
+  $('baseUp').addEventListener('click',   () => { setKeys(state.base + 1, state.count); blurAll(); });
 
   const tog = (id, key) => $(id).addEventListener('change', e => {
     state[key] = e.target.checked;
@@ -3467,11 +3500,24 @@ function bindUi() {
   });
 }
 
+/* カリンバのキー数と音域の表示をそろえる。
+   入力中の欄は書き換えない（打っている途中の数字が消えないように） */
+function syncKeyUi() {
+  const kc = document.getElementById('keyCount');
+  if (kc && document.activeElement !== kc) kc.value = state.count;
+  const kr = document.getElementById('keyRange');
+  if (!kr) return;
+  const q = P();
+  const lo = q.base, hi = q.base + q.count - 1;
+  kr.textContent = solfegeOf(lo) + '〜' + solfegeOf(hi) +
+                   '（' + letterOf(lo) + '〜' + letterOf(hi) + '）';
+}
+
 function syncInputs() {
   document.getElementById('title').value = state.title;
   document.getElementById('tempo').value = state.tempo;
   document.getElementById('timesig').value = state.beats + '/' + state.beatValue;
-  document.getElementById('preset').value = state.preset;
+  syncKeyUi();
   document.getElementById('perline').value = state.perLine;
   document.getElementById('sSol').checked = state.showSol;
   document.getElementById('sNum').checked = state.showNum;
