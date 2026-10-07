@@ -75,6 +75,10 @@
   .narrowOnly{display:none}
   .wideOnly{display:inline}
   #btnMenu{font-size:17px;line-height:1;padding:6px 11px}
+  /* カリンバのキー数と音域。プリセットから選ぶのではなく自由に決められる */
+  #keyCount{width:52px}
+  .keysgrp .seg button{padding:4px 7px;font-size:11px;line-height:1.2}
+  .keyrange{white-space:nowrap;min-width:116px}
 
   /* ---------- 楽譜 ---------- */
   /* align-items を既定の stretch のままにすると、白い紙の高さが表示領域の高さで
@@ -425,9 +429,15 @@ function writeAdmaxTag(tags) {
         <option value="6">6小節</option>
       </select>
     </div>
-    <div class="grp">
-      <label class="f" for="preset">カリンバ</label>
-      <select id="preset"></select>
+    <div class="grp keysgrp">
+      <label class="f" for="keyCount">カリンバ</label>
+      <input type="number" id="keyCount" min="5" max="34" title="キーの数">
+      <span class="f">キー</span>
+      <div class="seg">
+        <button id="baseDown" title="いちばん低い音を1つ下げる" aria-label="いちばん低い音を下げる">▼</button>
+        <button id="baseUp" title="いちばん低い音を1つ上げる" aria-label="いちばん低い音を上げる">▲</button>
+      </div>
+      <span class="f keyrange" id="keyRange"></span>
     </div>
     <div class="sep"></div>
     <div class="grp">
@@ -639,7 +649,8 @@ function writeAdmaxTag(tags) {
       <p>カリンバ（親指ピアノ）で弾くための<b>楽譜を無料で作成</b>できるページです。
       音符の下に<b>ドレミ</b>・<b>数字譜（1 2 3）</b>・<b>音名（C D E）</b>の3つを
       並べて書き出すので、<b>楽譜が読めない初心者でも弾けます</b>。
-      キーの数は 17キー・21キーなどから選べて、選んだ本数に合わせて数字が付きます。</p>
+      キーの数も音の高さも<b>手持ちのカリンバに合わせて自由に決められます</b>。
+      決めた並びに合わせて数字が付きます。</p>
       <p>作った楽譜は、この端末に保存したり、<b>リンクにしてスマホへ送ったり</b>、
       ログインして<b>クラウドに保存</b>したりできます。印刷や PNG 書き出しもできます。
       <a href="practice">音ゲーのようにノーツが上から降ってくる画面</a>もあるので、
