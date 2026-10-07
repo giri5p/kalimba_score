@@ -656,7 +656,7 @@ function writeAdmaxTag(tags) {
       <a href="practice">音ゲーのようにノーツが上から降ってくる画面</a>もあるので、
       楽譜を目で追うのが苦手でも、どのキーをいつ弾くかが分かります。</p>
       <p>音楽の知識がない人間が、自分と初心者のために作ったものです。
-      半音（♯ ♭）や複雑な楽譜は扱えません。くわしくは
+      ♯ ♭ も書けますが、複雑な楽譜は扱えません。くわしくは
       <a href="about.html">このサイトについて</a>をご覧ください。</p>
 
       <h2>はじめての方へ</h2>
@@ -701,6 +701,8 @@ function writeAdmaxTag(tags) {
         <button id="btnRest" title="R">休符</button>
         <button id="btnDot" title=".">付点</button>
         <button id="btnTie" title="T">タイ</button>
+        <button id="btnSharp" title="S／半音上げる。もう一度押すと外れます">♯</button>
+        <button id="btnFlat" title="Shift+S／半音下げる。もう一度押すと外れます">♭</button>
         <button id="btnChord" title="C">和音+</button>
         <button id="btnChordDel" title="Shift+C／選んだ音を外す">和音−</button>
         <button id="btnIns" title="Enter">挿入</button>
@@ -725,6 +727,7 @@ function writeAdmaxTag(tags) {
     <kbd>Tab</kbd> 次の音符へ（末尾なら追加）　<kbd>Shift+Tab</kbd> 前へ
     <kbd>1</kbd>–<kbd>7</kbd> ドレミ　<kbd>0</kbd> 休符（<kbd>M</kbd> で入力モードを切り替え）<br>
     <kbd>Enter</kbd> 挿入　<kbd>Delete</kbd> 削除　<kbd>R</kbd> 休符に切替　<kbd>.</kbd> 付点　<kbd>T</kbd> タイ
+    <kbd>S</kbd> ♯　<kbd>Shift+S</kbd> ♭（もう一度で外れます）
     <kbd>C</kbd> 和音追加（<kbd>Shift+C</kbd>で解除）　<kbd>Space</kbd> 再生/停止　<kbd>Ctrl+Z</kbd> 元に戻す<br>
     <b>複数選択</b>　楽譜上をドラッグ / <kbd>Shift</kbd>+音符クリック / <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd>
     <kbd>Ctrl+A</kbd> 全選択　<kbd>Esc</kbd> 解除
@@ -755,6 +758,8 @@ function writeAdmaxTag(tags) {
     <button id="mNext" title="次の音符へ（末尾なら追加）">▶</button>
     <button id="mDot" title="付点">・</button>
     <button id="mTie" title="タイ">タイ</button>
+    <button id="mSharp" title="半音上げる">♯</button>
+    <button id="mFlat" title="半音下げる">♭</button>
     <button id="mChordUp" title="和音に1音足す">和+</button>
     <button id="mChordDn" title="和音から1音外す">和−</button>
     <button id="mIns" title="ここに音符を挿入">挿入</button>
