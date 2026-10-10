@@ -314,26 +314,30 @@ function padDurations(remaining) {
 const SVGNS = 'http://www.w3.org/2000/svg';
 const FONT_JP = '"Yu Gothic UI","Meiryo","Hiragino Kaku Gothic ProN",sans-serif';
 
-/* 五線譜と数字譜（簡譜）の切り替え。曲そのものには保存せず、
-   この端末の設定として覚えます */
-const NUM_VIEW_KEY = 'kalimba-number-view';
-let numberView = false;
+/* 楽譜の見せ方。曲そのものには保存せず、この端末の設定として覚えます。
+     'staff'  … ふつうの五線譜（1段）
+     'grand'  … 左右の親指で上下 2 段に分ける
+     'number' … カリンバの数字だけの簡単な表示 */
+const VIEW_KEY = 'kalimba-view';
+const NUM_VIEW_KEY = 'kalimba-number-view';   // 昔の設定（数字譜かどうかだけ）
+let viewMode = 'staff';
+const numberViewOn = () => viewMode === 'number';
 
 function syncViewButtons() {
-  const a = document.getElementById('viewStaff');
-  const b = document.getElementById('viewNum');
-  if (a) a.classList.toggle('on', !numberView);
-  if (b) b.classList.toggle('on', numberView);
+  [['viewStaff', 'staff'], ['viewGrand', 'grand'], ['viewNum', 'number']].forEach(([id, v]) => {
+    const b = document.getElementById(id);
+    if (b) b.classList.toggle('on', viewMode === v);
+  });
   /* 数字譜のときは数字そのものが本体なので、「数字」のチェックは効きません */
   const c = document.getElementById('sNum');
   const l = document.getElementById('sNumLabel');
-  if (c) c.disabled = numberView;
-  if (l) l.style.opacity = numberView ? '.4' : '';
+  if (c) c.disabled = numberViewOn();
+  if (l) l.style.opacity = numberViewOn() ? '.4' : '';
 }
-function setNumberView(on) {
-  numberView = !!on;
+function setViewMode(v) {
+  viewMode = (v === 'grand' || v === 'number') ? v : 'staff';
   syncViewButtons();
-  try { localStorage.setItem(NUM_VIEW_KEY, numberView ? '1' : '0'); } catch (e) { /* 無視 */ }
+  try { localStorage.setItem(VIEW_KEY, viewMode); } catch (e) { /* 無視 */ }
   render();
 }
 
@@ -395,10 +399,11 @@ function render() {
   host.innerHTML = '';
   geom = []; sysGeom = []; seekRects = []; seekEdge = null; selGroup = null;
 
-  /* 五線譜か、数字だけの簡単な表示か。
-     どちらも geom / sysGeom を同じ形で埋めるので、
+  /* どの見せ方でも geom / sysGeom を同じ形で埋めるので、
      選択枠・再生位置・クリック判定から先は共通のものが使えます */
-  const svg = numberView ? drawNumberView(host) : drawStaffView(host);
+  const svg = viewMode === 'number' ? drawNumberView(host)
+            : viewMode === 'grand'  ? drawStaffView(host, true)
+                                    : drawStaffView(host);
   addOverlays(svg);
 
   if (paper) paper.scrollTop = keepScroll;
@@ -406,7 +411,20 @@ function render() {
 }
 
 /* ---- 五線譜の表示 ---------------------------------------------- */
-function drawStaffView(host) {
+/* そのキーを左右どちらの親指で弾くかは、実物の並びで決まっています。
+   中央から左へ出ているキーは左の親指、右へ出ているキーは右の親指。
+   -1 = 左、1 = 右、0 = 中央（いちばん長いキー。ここでは右と同じ段に置きます） */
+function handMap() {
+  const q = P();
+  const ord = tineOrder(q.count);
+  const mid = (ord.length - 1) / 2;
+  const map = {};
+  ord.forEach((k, pos) => { map[q.base + k] = pos < mid ? -1 : pos > mid ? 1 : 0; });
+  return map;
+}
+
+/* host に五線譜を描く。two を立てると、左右の親指で上下 2 段に分ける */
+function drawStaffView(host, two) {
   const F = window.Vex.Flow;
   const rows = (state.showSol ? 1 : 0) + (state.showNum ? 1 : 0) + (state.showLet ? 1 : 0);
   const W = Math.max(300, host.clientWidth || 900);   // スマホ幅でも画面内に収める
@@ -440,8 +458,10 @@ function drawStaffView(host) {
     }));
     return Math.max(0, (2 - lo) * 5 - 6);
   });
-  /* 1段の高さ: VexFlow が五線の上に確保する 40px + 五線 40px + ラベル + 段間 */
-  const sysHOf = (t, drop) => 80 + labelsHOf(rows, t) + drop + 16;
+  /* 1段の高さ: VexFlow が五線の上に確保する 40px + 五線 40px + ラベル + 段間。
+     2段にするときは、下の五線ぶん（GAP2 + 40px）を足す */
+  const GAP2 = 54;                                  // 上の五線と下の五線のあいだ
+  const sysHOf = (t, drop) => (two ? GAP2 + 40 : 0) + 80 + labelsHOf(rows, t) + drop + 16;
   const H = 10 + lineTones.reduce((a, t, i) => a + sysHOf(t, lineDrop[i]), 0) + 6;
 
   const renderer = new F.Renderer(host, F.Renderer.Backends.SVG);
@@ -458,9 +478,11 @@ function drawStaffView(host) {
     const staveTop = y;
     let x = MARGIN;
     sysGeom[li] = { top: staveTop + 6, left: MARGIN + HEAD_W - 6,
-                    bot: staveTop + 80 + labelsHOf(rows, lineTones[li]) + lineDrop[li],
+                    bot: staveTop + (two ? GAP2 + 40 : 0) + 80 +
+                         labelsHOf(rows, lineTones[li]) + lineDrop[li],
                     right: 0 };
 
+    const hands = two ? handMap() : null;
     lineMs.forEach((m, mi) => {
       /* 段の先頭だけ記号ぶん広げる。音符が並ぶ幅は、どの小節でも noteW で一定 */
       const w = noteW + (mi === 0 ? HEAD_W : 0);
@@ -473,9 +495,34 @@ function drawStaffView(host) {
       stave.setContext(ctx).draw();
       /* 描画後に音符の開始位置を固定する（拍子記号の有無で段がずれないように） */
       if (mi === 0) stave.setNoteStartX(x + HEAD_W);
+
+      let stave2 = null;
+      if (two) {
+        stave2 = new F.Stave(x, staveTop + GAP2 + 40, w);
+        if (mi === 0) stave2.addClef('treble');
+        if (li === 0 && mi === 0) stave2.addTimeSignature(state.beats + '/' + state.beatValue);
+        if (li === lines.length - 1 && mi === lineMs.length - 1) {
+          stave2.setEndBarType(F.Barline.type.END);
+        }
+        stave2.setContext(ctx).draw();
+        if (mi === 0) stave2.setNoteStartX(x + HEAD_W);
+        /* 2つの五線を縦線でつなぐ。段の先頭だけ括弧も付ける */
+        try {
+          if (mi === 0) {
+            new F.StaveConnector(stave, stave2)
+              .setType(F.StaveConnector.type.BRACE).setContext(ctx).draw();
+          }
+          new F.StaveConnector(stave, stave2)
+            .setType(F.StaveConnector.type.SINGLE_LEFT).setContext(ctx).draw();
+        } catch (e) { /* 無視 */ }
+      }
       measureNo++;
-      if (m.idx.length) drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, li,
-                                    lineTones[li], lineDrop[li]);
+      if (m.idx.length) {
+        if (two) drawGrandMeasure(F, ctx, svg, stave, stave2, m, noteW, rows, drawn, li,
+                                  lineTones[li], lineDrop[li], hands, GAP2);
+        else drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, li,
+                         lineTones[li], lineDrop[li]);
+      }
       x += w;
     });
     sysGeom[li].right = x;
@@ -883,6 +930,112 @@ function buildBeams(F, m, vfNotes) {
     try { beams.push(new F.Beam(run.map(k => vfNotes[k]), true)); } catch (e) { /* 無視 */ }
   });
   return beams;
+}
+
+/* 1小節ぶんを上下 2 段に分けて描く。
+   上の段 = 右の親指、下の段 = 左の親指。
+   相手の段には見えない音符（GhostNote）を置いて、縦の位置をそろえる。
+
+   カリンバは「どのキーをどちらの親指で弾くか」が実物の並びで決まっているので、
+   ここでの振り分けは自動です。ただし音階を弾くだけで左右が交互になるため、
+   段を行き来することになります。 */
+function drawGrandMeasure(F, ctx, svg, stTop, stBot, m, noteW, rows, drawn,
+                          line, tones, drop, hands, gap) {
+  /* 音符ごとに、その段に出すぶんと、相手の段に置く見えない音符を作る */
+  const mk = (i, side) => {
+    const n = state.notes[i];
+    const ps = n.rest ? [] : n.p.slice().sort((a, b) => a - b)
+                              .filter(x => (hands[x] === -1 ? -1 : 1) === side);
+    if (n.rest || !ps.length) {
+      const g = new F.GhostNote({ duration: n.d });
+      if (n.dot) { try { F.Dot.buildAndAttach([g], { all: true }); } catch (e) {} }
+      return { note: g, real: false };
+    }
+    const sn = new F.StaveNote({ keys: ps.map(x => vexKeyOf(x, accOf(n, x))),
+                                 duration: n.d, auto_stem: true });
+    ps.forEach((x, k) => {
+      const a = accOf(n, x);
+      if (!a) return;
+      try { sn.addModifier(new F.Accidental(a > 0 ? '#' : 'b'), k); }
+      catch (e) { try { sn.addAccidental(k, new F.Accidental(a > 0 ? '#' : 'b')); } catch (e2) {} }
+    });
+    if (n.dot) F.Dot.buildAndAttach([sn], { all: true });
+    return { note: sn, real: true };
+  };
+
+  const up = m.idx.map(i => mk(i, 1));      // 右の親指（上の段）
+  const dn = m.idx.map(i => mk(i, -1));     // 左の親指（下の段）
+
+  /* 入力途中の小節は、見えない音符で残りを埋めて拍の位置をそろえる */
+  const pad = padDurations(state.beats / state.beatValue - m.filled);
+  const padNotes = () => pad.map(u => {
+    const g = new F.GhostNote({ duration: u.d });
+    if (u.dot) { try { F.Dot.buildAndAttach([g], { all: true }); } catch (e) {} }
+    return g;
+  });
+
+  const mkVoice = arr => {
+    const v = new F.Voice({ num_beats: state.beats, beat_value: state.beatValue,
+                            numBeats: state.beats, beatValue: state.beatValue });
+    try { v.setMode(F.Voice.Mode.SOFT); } catch (e) { v.setStrict(false); }
+    v.addTickables(arr.map(x => x.note).concat(padNotes()));
+    return v;
+  };
+  const vUp = mkVoice(up), vDn = mkVoice(dn);
+
+  /* 連桁。本物の音符が続いているところだけつなぐ */
+  const beamsOf = arr => {
+    const out = [];
+    let run = [];
+    const flush = () => {
+      if (run.length > 1) { try { out.push(new F.Beam(run, true)); } catch (e) {} }
+      run = [];
+    };
+    m.idx.forEach((i, k) => {
+      const n = state.notes[i];
+      if (!arr[k].real || n.rest || DEN[n.d] < 8) flush();
+      else run.push(arr[k].note);
+    });
+    flush();
+    return out;
+  };
+  const beams = beamsOf(up).concat(beamsOf(dn));
+
+  new F.Formatter().joinVoices([vUp]).joinVoices([vDn])
+    .format([vUp, vDn], Math.max(40, noteW - 14));
+  vUp.draw(ctx, stTop);
+  vDn.draw(ctx, stBot);
+  beams.forEach(b => b.setContext(ctx).draw());
+
+  /* ドレミ / 数字譜 / CDE は、下の五線のさらに下にまとめて出す */
+  const topY = stTop.getYForLine(0);
+  const botY = stBot.getYForLine(4);
+  const base = botY + 24 + (drop || 0);
+  const step = rowStepOf(tones);
+  m.idx.forEach((i, k) => {
+    const real = up[k].real ? up[k] : dn[k];
+    const sn = real.note;
+    let cx;
+    try { cx = (sn.getNoteHeadBeginX() + sn.getNoteHeadEndX()) / 2; } catch (e) { cx = NaN; }
+    if (!isFinite(cx)) { try { cx = sn.getAbsoluteX() + 6; } catch (e2) { cx = NaN; } }
+    if (!isFinite(cx)) cx = stTop.getNoteStartX() + 10;
+
+    const lab = labelsFor(state.notes[i]);
+    let r = 0;
+    const put = (arr, size, fill, weight) => {
+      arr.forEach((txt, t) => svgText(svg, cx, base + r * step + t * LINE_H, txt, size, fill, weight));
+      r++;
+    };
+    if (state.showSol) put(lab.sol, 12, '#1c2024');
+    if (state.showNum) put(lab.num, 12, '#1c2024', '600');
+    if (state.showLet) put(lab.let, 10.5, '#8a919b');
+
+    let heads = [];
+    try { if (!state.notes[i].rest && real.real) heads = sn.getYs().slice(); } catch (e) { heads = []; }
+    geom[i] = { x: cx, line: line, top: staveTopOf(stTop) + 6, heads: heads,
+                bot: base + Math.max(0, r - 1) * step + 10 };
+    drawn[i] = { sn: sn, stave: real === up[k] ? stTop : stBot };
+  });
 }
 
 function drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, line, tones, drop) {
@@ -3489,8 +3642,9 @@ function bindUi() {
   $('mDel').addEventListener('click',     () => { deleteNote(); blurAll(); });
   $('mUndo').addEventListener('click',    () => { undo(); blurAll(); });
 
-  $('viewStaff').addEventListener('click', () => { setNumberView(false); blurAll(); });
-  $('viewNum').addEventListener('click',   () => { setNumberView(true);  blurAll(); });
+  $('viewStaff').addEventListener('click', () => { setViewMode('staff');  blurAll(); });
+  $('viewGrand').addEventListener('click', () => { setViewMode('grand');  blurAll(); });
+  $('viewNum').addEventListener('click',   () => { setViewMode('number'); blurAll(); });
 
   $('modeEdit').addEventListener('click', () => { setInputMode('edit'); blurAll(); });
   $('modeAdd').addEventListener('click',  () => { setInputMode('add');  blurAll(); });
@@ -3676,9 +3830,13 @@ function boot() {
   let panelOpen = true;
   try { panelOpen = localStorage.getItem(PANEL_KEY) !== '0'; } catch (e) { /* 無視 */ }
   setPanel(panelOpen);
-  /* 前に数字譜で見ていたら、そのまま数字譜で開く。
+  /* 前に選んでいた見せ方で開く。
      この時点ではまだ描いていないので、ボタンの見た目だけそろえます */
-  try { numberView = localStorage.getItem(NUM_VIEW_KEY) === '1'; } catch (e) { /* 無視 */ }
+  try {
+    const v = localStorage.getItem(VIEW_KEY);
+    if (v) viewMode = v;
+    else if (localStorage.getItem(NUM_VIEW_KEY) === '1') viewMode = 'number';   // 昔の設定から
+  } catch (e) { /* 無視 */ }
   syncViewButtons();
   readOnly = window.matchMedia(NARROW).matches;   // 画面の広さだけで決める
   try { setSilent(localStorage.getItem(SILENT_KEY) === '1'); } catch (e) {}
