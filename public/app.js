@@ -374,6 +374,16 @@ function labelsFor(n) {
            let: ps.map(s => letterOf(s, accOf(n, s))) };
 }
 
+/* 2段表示のとき、片方の親指ぶんだけラベルを作る。side は 1 = 右（上の段）、-1 = 左（下の段） */
+function labelsForSide(n, hands, side) {
+  if (n.rest) return { sol: [], num: [], let: [] };
+  const ps = n.p.slice().sort((a, b) => b - a)
+                .filter(x => (hands[x] === -1 ? -1 : 1) === side);
+  return { sol: ps.map(s => solfegeOf(s, accOf(n, s))),
+           num: ps.map(s => numberOf(s, accOf(n, s))),
+           let: ps.map(s => letterOf(s, accOf(n, s))) };
+}
+
 /* ステータス行など、1 行で書きたいとき用 */
 function labelText(n) {
   if (n.rest) return '休符';
@@ -438,31 +448,39 @@ function drawStaffView(host, two) {
   const lines = [];
   for (let i = 0; i < measures.length; i += perLine) lines.push(measures.slice(i, i + perLine));
 
-  /* 段ごとに「その段で一番音数の多い和音」を調べ、ラベルの高さを決める */
-  const lineTones = lines.map(lineMs => {
-    let t = 1;
-    lineMs.forEach(m => m.idx.forEach(i => {
-      const n = state.notes[i];
-      if (!n.rest) t = Math.max(t, Math.min(4, n.p.length));
-    }));
-    return t;
-  });
-  /* 段ごとに、いちばん低い音が五線からどれだけ下へはみ出すかも調べる。
+  /* 2段のときは、どのキーをどちらの親指で弾くかをここで一度だけ決めておく */
+  const hands = two ? handMap() : null;
+  const sideOf = x => (hands[x] === -1 ? -1 : 1);
+
+  /* 段ごとに「一番音数の多い和音」と「いちばん低い音が五線からどれだけ下へはみ出すか」を調べる。
      21キーのような低音のあるカリンバだと、下第◯線の音符とラベルが重なるので、
-     その段だけラベルをまとめて下げる（1ステップ＝5px、五線のいちばん下の線が step 2） */
-  const lineDrop = lines.map(lineMs => {
-    let lo = 2;
+     その段だけラベルをまとめて下げる（1ステップ＝5px、五線のいちばん下の線が step 2）。
+     2段のときはラベルも上下に分けて出すので、上の段と下の段を別々に測ります。
+     side は 1 = 右の親指、-1 = 左の親指、0 = 分けない（1段のとき） */
+  const measureLine = (lineMs, side) => {
+    let t = 1, lo = 2;
     lineMs.forEach(m => m.idx.forEach(i => {
       const n = state.notes[i];
-      if (!n.rest) lo = Math.min(lo, Math.min.apply(null, n.p));
+      if (n.rest) return;
+      const ps = side ? n.p.filter(x => sideOf(x) === side) : n.p;
+      if (!ps.length) return;
+      t = Math.max(t, Math.min(4, ps.length));
+      lo = Math.min(lo, Math.min.apply(null, ps));
     }));
-    return Math.max(0, (2 - lo) * 5 - 6);
-  });
-  /* 1段の高さ: VexFlow が五線の上に確保する 40px + 五線 40px + ラベル + 段間。
-     2段にするときは、下の五線ぶん（GAP2 + 40px）を足す */
-  const GAP2 = 54;                                  // 上の五線と下の五線のあいだ
-  const sysHOf = (t, drop) => (two ? GAP2 + 40 : 0) + 80 + labelsHOf(rows, t) + drop + 16;
-  const H = 10 + lineTones.reduce((a, t, i) => a + sysHOf(t, lineDrop[i]), 0) + 6;
+    return { tones: t, drop: Math.max(0, (2 - lo) * 5 - 6) };
+  };
+  const lineUp = lines.map(ms => measureLine(ms, two ? 1 : 0));   // 1段のときもこちらを使う
+  const lineDn = two ? lines.map(ms => measureLine(ms, -1)) : null;
+
+  /* 上の五線と下の五線のあいだ。上の段のラベルがここに入るので、その高さぶん空ける */
+  const gapOf = li => two
+    ? Math.max(46, labelsHOf(rows, lineUp[li].tones) + lineUp[li].drop + 10) : 0;
+  /* 1段の高さ: VexFlow が五線の上に確保する 40px + 五線 40px + ラベル + 段間 */
+  const sysHOf = li => {
+    const b = two ? lineDn[li] : lineUp[li];
+    return 80 + gapOf(li) + (two ? 40 : 0) + labelsHOf(rows, b.tones) + b.drop + 16;
+  };
+  const H = 10 + lines.reduce((a, x, i) => a + sysHOf(i), 0) + 6;
 
   const renderer = new F.Renderer(host, F.Renderer.Backends.SVG);
   renderer.resize(W, H);
@@ -477,12 +495,11 @@ function drawStaffView(host, two) {
   lines.forEach((lineMs, li) => {
     const staveTop = y;
     let x = MARGIN;
+    const gap = gapOf(li);
     sysGeom[li] = { top: staveTop + 6, left: MARGIN + HEAD_W - 6,
-                    bot: staveTop + (two ? GAP2 + 40 : 0) + 80 +
-                         labelsHOf(rows, lineTones[li]) + lineDrop[li],
+                    bot: staveTop + sysHOf(li) - 16,
                     right: 0 };
 
-    const hands = two ? handMap() : null;
     lineMs.forEach((m, mi) => {
       /* 段の先頭だけ記号ぶん広げる。音符が並ぶ幅は、どの小節でも noteW で一定 */
       const w = noteW + (mi === 0 ? HEAD_W : 0);
@@ -498,7 +515,7 @@ function drawStaffView(host, two) {
 
       let stave2 = null;
       if (two) {
-        stave2 = new F.Stave(x, staveTop + GAP2 + 40, w);
+        stave2 = new F.Stave(x, staveTop + gap + 40, w);
         if (mi === 0) stave2.addClef('treble');
         if (li === 0 && mi === 0) stave2.addTimeSignature(state.beats + '/' + state.beatValue);
         if (li === lines.length - 1 && mi === lineMs.length - 1) {
@@ -519,14 +536,14 @@ function drawStaffView(host, two) {
       measureNo++;
       if (m.idx.length) {
         if (two) drawGrandMeasure(F, ctx, svg, stave, stave2, m, noteW, rows, drawn, li,
-                                  lineTones[li], lineDrop[li], hands, GAP2);
+                                  lineUp[li], lineDn[li], hands);
         else drawMeasure(F, ctx, svg, stave, m, noteW, rows, drawn, li,
-                         lineTones[li], lineDrop[li]);
+                         lineUp[li].tones, lineUp[li].drop);
       }
       x += w;
     });
     sysGeom[li].right = x;
-    y += sysHOf(lineTones[li], lineDrop[li]);
+    y += sysHOf(li);
   });
 
   /* タイ。和音は「両方に共通する音」ごとに 1 本ずつ結ぶ。
@@ -940,7 +957,7 @@ function buildBeams(F, m, vfNotes) {
    ここでの振り分けは自動です。ただし音階を弾くだけで左右が交互になるため、
    段を行き来することになります。 */
 function drawGrandMeasure(F, ctx, svg, stTop, stBot, m, noteW, rows, drawn,
-                          line, tones, drop, hands, gap) {
+                          line, up2, dn2, hands) {
   /* 音符ごとに、その段に出すぶんと、相手の段に置く見えない音符を作る */
   const mk = (i, side) => {
     const n = state.notes[i];
@@ -1007,11 +1024,11 @@ function drawGrandMeasure(F, ctx, svg, stTop, stBot, m, noteW, rows, drawn,
   vDn.draw(ctx, stBot);
   beams.forEach(b => b.setContext(ctx).draw());
 
-  /* ドレミ / 数字譜 / CDE は、下の五線のさらに下にまとめて出す */
-  const topY = stTop.getYForLine(0);
-  const botY = stBot.getYForLine(4);
-  const base = botY + 24 + (drop || 0);
-  const step = rowStepOf(tones);
+  /* ドレミ / 数字譜 / CDE。右の親指ぶんは上の五線の下に、
+     左の親指ぶんは下の五線の下に出す。こうしないと、どちらの手の音か分かりません */
+  const baseUp = stTop.getYForLine(4) + 24 + up2.drop;
+  const baseDn = stBot.getYForLine(4) + 24 + dn2.drop;
+  const stepUp = rowStepOf(up2.tones), stepDn = rowStepOf(dn2.tones);
   m.idx.forEach((i, k) => {
     const real = up[k].real ? up[k] : dn[k];
     const sn = real.note;
@@ -1020,20 +1037,26 @@ function drawGrandMeasure(F, ctx, svg, stTop, stBot, m, noteW, rows, drawn,
     if (!isFinite(cx)) { try { cx = sn.getAbsoluteX() + 6; } catch (e2) { cx = NaN; } }
     if (!isFinite(cx)) cx = stTop.getNoteStartX() + 10;
 
-    const lab = labelsFor(state.notes[i]);
-    let r = 0;
-    const put = (arr, size, fill, weight) => {
-      arr.forEach((txt, t) => svgText(svg, cx, base + r * step + t * LINE_H, txt, size, fill, weight));
-      r++;
+    /* その段にその音符の音がなければ、ラベルは出ません（行の数だけは数えます） */
+    const putLabels = (base, step, side) => {
+      const lab = labelsForSide(state.notes[i], hands, side);
+      let r = 0;
+      const put = (arr, size, fill, weight) => {
+        arr.forEach((txt, t) => svgText(svg, cx, base + r * step + t * LINE_H, txt, size, fill, weight));
+        r++;
+      };
+      if (state.showSol) put(lab.sol, 12, '#1c2024');
+      if (state.showNum) put(lab.num, 12, '#1c2024', '600');
+      if (state.showLet) put(lab.let, 10.5, '#8a919b');
+      return r;
     };
-    if (state.showSol) put(lab.sol, 12, '#1c2024');
-    if (state.showNum) put(lab.num, 12, '#1c2024', '600');
-    if (state.showLet) put(lab.let, 10.5, '#8a919b');
+    putLabels(baseUp, stepUp, 1);
+    const r = putLabels(baseDn, stepDn, -1);
 
     let heads = [];
     try { if (!state.notes[i].rest && real.real) heads = sn.getYs().slice(); } catch (e) { heads = []; }
     geom[i] = { x: cx, line: line, top: staveTopOf(stTop) + 6, heads: heads,
-                bot: base + Math.max(0, r - 1) * step + 10 };
+                bot: baseDn + Math.max(0, r - 1) * stepDn + 10 };
     drawn[i] = { sn: sn, stave: real === up[k] ? stTop : stBot };
   });
 }
