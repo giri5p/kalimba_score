@@ -602,6 +602,10 @@ function addOverlays(svg) {
     seekRects[li] = r;
     svg.insertBefore(r, svg.firstChild);
   });
+  /* 左手の段の下じきは、選択枠よりさらに後ろ（いちばん背面）に置く。
+     そうしないと、選んだ音符の薄い青が下じきに隠れてしまう */
+  const band = svg.querySelector('g.handband');
+  if (band) svg.insertBefore(band, svg.firstChild);
 
   /* クリック用の透明な当たり判定を最前面に */
   geom.forEach((g, i) => {
@@ -719,6 +723,10 @@ function drawNumberView(host, two) {
 
   const svg = svgEl('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H });
   host.appendChild(svg);
+  /* 左手の段の下じき。選択枠より後ろに置きたいので、
+     まとめて1つのグループにして、あとで最背面へ回す（addOverlays） */
+  const bandG = svgEl('g', { class: 'handband' });
+  svg.appendChild(bandG);
 
   const bar = (x, y0, y1, w) => svg.appendChild(svgEl('rect', {
     x: x - (w || 1) / 2, y: y0, width: w || 1, height: y1 - y0, fill: '#1c2024' }));
@@ -752,7 +760,7 @@ function drawNumberView(host, two) {
     /* 左手の段に、うすい下じきを敷く。どちらの手の行かがひと目で分かるように */
     if (two) {
       const b = blocks[1];
-      svg.appendChild(svgEl('rect', {
+      bandG.appendChild(svgEl('rect', {
         x: NV.margin, y: b.top - 4, width: W - NV.margin * 2, height: b.bot - b.top + 8,
         rx: 6, fill: '#eef1f6' }));
     }
