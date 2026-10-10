@@ -70,6 +70,9 @@
   .seg button:first-child{border-radius:6px 0 0 6px;margin-left:0}
   .seg button:last-child{border-radius:0 6px 6px 0}
   .seg button.on{background:var(--accent);border-color:var(--accent);color:#fff;position:relative;z-index:1}
+  .tgl{font-size:13px;padding:5px 10px;margin-left:6px}
+  .tgl.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .tgl.on:hover{background:var(--accent);filter:brightness(1.07)}
   .seg button.on:hover{background:var(--accent);filter:brightness(1.07)}
   .settings{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
   .narrowOnly{display:none}
@@ -444,9 +447,10 @@ function writeAdmaxTag(tags) {
       <label class="f">表示</label>
       <div class="seg" id="viewSeg">
         <button id="viewStaff" title="ふつうの五線譜で表示します">五線譜</button>
-        <button id="viewGrand" title="左右の親指で弾く音を上下2段に分けて表示します（試作）">左右手別</button>
         <button id="viewNum" title="カリンバの数字だけを並べた、かんたんな楽譜にします">数字譜</button>
       </div>
+      <button id="viewHands" class="tgl"
+              title="右の親指で弾く音を上、左の親指で弾く音を下に分けて書きます（試作）。五線譜・数字譜のどちらにも使えます">左右手別</button>
     </div>
     <div class="grp">
       <label class="chk"><input type="checkbox" id="sSol" checked>ドレミ</label>

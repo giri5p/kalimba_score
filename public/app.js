@@ -315,19 +315,24 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 const FONT_JP = '"Yu Gothic UI","Meiryo","Hiragino Kaku Gothic ProN",sans-serif';
 
 /* 楽譜の見せ方。曲そのものには保存せず、この端末の設定として覚えます。
-     'staff'  … ふつうの五線譜（1段）
-     'grand'  … 左右の親指で上下 2 段に分ける
-     'number' … カリンバの数字だけの簡単な表示 */
+     'staff'  … ふつうの五線譜
+     'number' … カリンバの数字だけの簡単な表示
+   どちらにも「左右手別」（handSplit）を重ねられます。右の親指で弾く音を上、
+   左の親指で弾く音を下に分けて書く見せ方です。 */
 const VIEW_KEY = 'kalimba-view';
+const HAND_KEY = 'kalimba-hand-split';
 const NUM_VIEW_KEY = 'kalimba-number-view';   // 昔の設定（数字譜かどうかだけ）
 let viewMode = 'staff';
+let handSplit = false;
 const numberViewOn = () => viewMode === 'number';
 
 function syncViewButtons() {
-  [['viewStaff', 'staff'], ['viewGrand', 'grand'], ['viewNum', 'number']].forEach(([id, v]) => {
+  [['viewStaff', 'staff'], ['viewNum', 'number']].forEach(([id, v]) => {
     const b = document.getElementById(id);
     if (b) b.classList.toggle('on', viewMode === v);
   });
+  const h = document.getElementById('viewHands');
+  if (h) h.classList.toggle('on', handSplit);
   /* 数字譜のときは数字そのものが本体なので、「数字」のチェックは効きません */
   const c = document.getElementById('sNum');
   const l = document.getElementById('sNumLabel');
@@ -335,9 +340,15 @@ function syncViewButtons() {
   if (l) l.style.opacity = numberViewOn() ? '.4' : '';
 }
 function setViewMode(v) {
-  viewMode = (v === 'grand' || v === 'number') ? v : 'staff';
+  viewMode = v === 'number' ? 'number' : 'staff';
   syncViewButtons();
   try { localStorage.setItem(VIEW_KEY, viewMode); } catch (e) { /* 無視 */ }
+  render();
+}
+function setHandSplit(on) {
+  handSplit = !!on;
+  syncViewButtons();
+  try { localStorage.setItem(HAND_KEY, handSplit ? '1' : '0'); } catch (e) { /* 無視 */ }
   render();
 }
 
@@ -411,9 +422,8 @@ function render() {
 
   /* どの見せ方でも geom / sysGeom を同じ形で埋めるので、
      選択枠・再生位置・クリック判定から先は共通のものが使えます */
-  const svg = viewMode === 'number' ? drawNumberView(host)
-            : viewMode === 'grand'  ? drawStaffView(host, true)
-                                    : drawStaffView(host);
+  const svg = viewMode === 'number' ? drawNumberView(host, handSplit)
+                                    : drawStaffView(host, handSplit);
   addOverlays(svg);
 
   if (paper) paper.scrollTop = keepScroll;
@@ -674,26 +684,38 @@ function nvHeld(i) {
   return a.every((v, k) => v === b[k]);
 }
 
-function drawNumberView(host) {
+/* 数字譜を描く。two を立てると、右の親指で弾く音を上、左の親指で弾く音を下に分ける */
+function drawNumberView(host, two) {
   const W = Math.max(300, host.clientWidth || 900);
   const measures = buildMeasures();
+  /* 左右手別のときは、段の左に「右」「左」も置くので、そのぶん広げる */
+  const headW = NV.headW + (two ? 18 : 0);
   const perLine = Math.max(1, Math.min(state.perLine,
-                  Math.floor((W - NV.margin * 2 - NV.headW) / NV.minW)));
-  const mW = (W - NV.margin * 2 - NV.headW) / perLine;  // 1小節の幅
+                  Math.floor((W - NV.margin * 2 - headW) / NV.minW)));
+  const mW = (W - NV.margin * 2 - headW) / perLine;     // 1小節の幅
   const lines = [];
   for (let i = 0; i < measures.length; i += perLine) lines.push(measures.slice(i, i + perLine));
 
-  /* 段ごとに、その段でいちばん音数の多い和音を調べて高さを決める */
-  const lineTones = lines.map(ms => {
+  /* 左右手別のときは、どのキーをどちらの親指で弾くかをここで一度だけ決めておく */
+  const hands = two ? handMap() : null;
+  const sideOf = x => (hands[x] === -1 ? -1 : 1);
+
+  /* 段ごとに、そこでいちばん音数の多い和音を調べて高さを決める。
+     左右手別のときは右の親指ぶんと左の親指ぶんを別々に数える */
+  const tonesOf = (ms, side) => {
     let t = 1;
     ms.forEach(m => m.idx.forEach(i => {
       const n = state.notes[i];
-      if (!n.rest) t = Math.max(t, Math.min(4, n.p.length));
+      if (n.rest) return;
+      const ps = side ? n.p.filter(x => sideOf(x) === side) : n.p;
+      if (ps.length) t = Math.max(t, Math.min(4, ps.length));
     }));
     return t;
-  });
-  const legendH = 34;                                   // いちばん下に置く記号の説明
-  const H = 12 + lineTones.reduce((a, t) => a + nvRows(t).h, 0) + 8 + legendH;
+  };
+  const lineRows = lines.map(ms =>
+    nvRows(two ? [tonesOf(ms, 1), tonesOf(ms, -1)] : [tonesOf(ms, 0)]));
+  const legendH = two ? 48 : 34;                        // いちばん下に置く記号の説明
+  const H = 12 + lineRows.reduce((a, r) => a + r.h, 0) + 8 + legendH;
 
   const svg = svgEl('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H });
   host.appendChild(svg);
@@ -705,13 +727,16 @@ function drawNumberView(host) {
   let y = 12;
 
   lines.forEach((lineMs, li) => {
-    const t = lineTones[li];
-    const r = nvRows(t);
-    const numTop = y + r.numTop;                 // 1段目の数字のベースライン
+    const r = lineRows[li];
+    const numTop = y + r.numTop;                 // いちばん上の数字のベースライン
     const numBot = y + r.numBot;                 // いちばん下の数字のベースライン
     const blockTop = y + 4;
     const blockBot = y + r.h - 8;
-    const left = NV.margin + NV.headW;
+    const left = NV.margin + headW;
+    /* 画面に出す行の情報。left / sol / numBot は段の上端ぶんを足した実座標にする */
+    const blocks = r.blocks.map((b, bi) => ({
+      side: two ? (bi === 0 ? 1 : -1) : 0,
+      numBot: y + b.numBot, sol: y + b.sol, let: y + b.let }));
 
     sysGeom[li] = { top: blockTop, left: left - 6, bot: blockBot,
                     right: left + lineMs.length * mW };
@@ -719,16 +744,21 @@ function drawNumberView(host) {
     /* 段の先頭に小節番号。1段目だけ拍子も出す。
        拍子は、ふつうの音符と同じ行（いちばん下）にそろえる */
     svgText(svg, NV.margin + 8, numTop - 14, String(measureNo), 10.5, '#8a919b');
+    /* 左右手別のときは、どちらの親指の段かを左端に書く */
+    if (two) {
+      svgText(svg, NV.margin + 9, blocks[0].numBot, '右', 11, '#9aa1ab', '600');
+      svgText(svg, NV.margin + 9, blocks[1].numBot, '左', 11, '#9aa1ab', '600');
+    }
     if (li === 0) {
-      svgText(svg, NV.margin + NV.headW / 2, numBot + 2,
+      /* 左右手別のときは「右」「左」の右どなりに置く */
+      svgText(svg, NV.margin + (two ? headW - 12 : headW / 2), numBot + 2,
               state.beats + '/' + state.beatValue, 12, '#8a919b', '600');
     }
 
     lineMs.forEach((m, mi) => {
       const mx = left + mi * mW;
       bar(mx, blockTop + 4, blockBot - 4);               // 小節の頭の縦線
-      nvDrawMeasure(svg, m, mx + 10, mW - 20, li, numBot,
-                    y + r.sol, y + r.let, blockTop, blockBot);
+      nvDrawMeasure(svg, m, mx + 10, mW - 20, li, blocks, blockTop, blockBot, sideOf);
       measureNo++;
     });
 
@@ -741,29 +771,46 @@ function drawNumberView(host) {
 
 
   /* 記号の読み方。印刷や PNG にもそのまま入るよう、楽譜の中に書いておきます */
-  svgText(svg, W / 2, H - 20,
+  svgText(svg, W / 2, H - (two ? 34 : 20),
     '数字 = 弾くキー（* は1オクターブ上）　0 = 休み　− = のばす',
     10.5, '#9aa1ab');
-  svgText(svg, W / 2, H - 6,
+  svgText(svg, W / 2, H - (two ? 20 : 6),
     '数字の下の線 = 短い音（1本で半分、2本で4分の1）　・ = 付点',
     10.5, '#9aa1ab');
+  if (two) {
+    svgText(svg, W / 2, H - 6,
+      '上の段 = 右の親指で弾くキー　下の段 = 左の親指で弾くキー',
+      10.5, '#9aa1ab');
+  }
 
   return svg;
 }
 
 /* 1段ぶんの行の位置（段の上端からの相対値）。
-   高さの計算と実際の描画で同じものを使うため、1か所にまとめてあります。 */
-function nvRows(t) {
-  const numTop = 26;
-  const numBot = numTop + (t - 1) * NV.toneH;
-  let y = numBot + 12;                                  // 下線のぶんを空ける
-  /* 数字譜では CDE が上、ドレミが下。
-     どの段も「いちばん低い音」を下にそろえて、和音は上へ積んでいくので、
-     返すのはそれぞれの“いちばん下の行”の位置です */
-  let lt = 0, sol = 0;
-  if (state.showLet) { y += 12 + (t - 1) * 10; lt = y; }
-  if (state.showSol) { y += 13 + (t - 1) * 11; sol = y; }
-  return { numTop: numTop, numBot: numBot, sol: sol, let: lt, h: y + 20 };
+   高さの計算と実際の描画で同じものを使うため、1か所にまとめてあります。
+
+   tones はブロックごとの「いちばん音数の多い和音」の配列です。
+   ふつうは1つだけ。左右手別のときは [右の親指, 左の親指] の2つになり、
+   上下に積んで書きます。 */
+function nvRows(tones) {
+  const blocks = [];
+  let top = 26;
+  tones.forEach(t => {
+    const numTop = top;
+    const numBot = numTop + (t - 1) * NV.toneH;
+    let y = numBot + 12;                                // 下線のぶんを空ける
+    /* 数字譜では CDE が上、ドレミが下。
+       どのブロックも「いちばん低い音」を下にそろえて、和音は上へ積んでいくので、
+       持っておくのはそれぞれの“いちばん下の行”の位置です */
+    let lt = 0, sol = 0;
+    if (state.showLet) { y += 12 + (t - 1) * 10; lt = y; }
+    if (state.showSol) { y += 13 + (t - 1) * 11; sol = y; }
+    blocks.push({ numTop: numTop, numBot: numBot, sol: sol, let: lt, bot: y });
+    top = y + 22;                                       // 次のブロックまでの空き
+  });
+  const last = blocks[blocks.length - 1];
+  return { blocks: blocks, numTop: blocks[0].numTop, numBot: last.numBot,
+           h: last.bot + 20 };
 }
 
 /* 1小節ぶんを描く。
@@ -773,7 +820,7 @@ function nvRows(t) {
      その音符に最低限ほしい幅 ＋ 余った幅を長さの比で分ける
    という配り方にしています。音数が少ない小節ではほぼ拍どおりになり、
    詰まった小節でも最低限の間隔が残ります。 */
-function nvDrawMeasure(svg, m, x0, span, line, numBot, solY, letY, top, bot) {
+function nvDrawMeasure(svg, m, x0, span, line, blocks, top, bot, sideOf) {
   if (!m.idx.length) return;
 
   const durs = m.idx.map(i => noteValue(state.notes[i]));
@@ -803,43 +850,51 @@ function nvDrawMeasure(svg, m, x0, span, line, numBot, solY, letY, top, bot) {
     const heads = [];
 
     const held = nvHeld(i);
-    if (n.rest) {
-      svgText(svg, cx, numBot, '0', numSize, '#1c2024', '600');
-      heads.push(numBot - 6);
-    } else if (held) {
-      /* タイでつながった音は、弾き直さずに前の音をのばすだけ */
-      svgText(svg, cx, numBot, '−', numSize, '#1c2024');
-      heads.push(numBot - 6);
-    } else {
-      /* いちばん低い音を下の行に置き、和音で足した音は上へ積む。
-         こうすると、ふつうの音符・休符・のばし棒と同じ行に主旋律がそろいます。
-         labelsFor は高い音が先頭なので、後ろから数えて行を決めます */
-      const nums = labelsFor(n).num;
-      nums.forEach((txt, j) => {
-        const ny = numBot - (nums.length - 1 - j) * NV.toneH;
-        svgText(svg, cx, ny, txt, numSize, '#1c2024', '600');
-        /* heads は「低い順」に入れる（[ ] キーで選ぶ tone と同じ数え方） */
-        heads[nums.length - 1 - j] = ny - 6;
-      });
-    }
-
-    /* のばし棒「−」。その音符に配られた幅の中へ等間隔に置く */
+    const asc = n.rest ? [] : n.p.slice().sort((a, b) => a - b);   // 低い順
     const d = nvDashes(n);
-    for (let j = 1; j <= d; j++) {
-      svgText(svg, cx + slot * j / (d + 1), numBot, '−', numSize, '#1c2024');
-    }
-    /* 付点は「最後ののばし棒の右」。のばし棒がなければ数字のすぐ右 */
-    if (n.dot) {
-      const base = d ? cx + slot * d / (d + 1) : cx;
-      svgText(svg, base + 12 * sc, numBot - 4, '・', 11 * sc, '#1c2024');
-    }
 
-    /* ドレミ・CDE。数字と同じく、いちばん低い音を下にそろえて上へ積む。
-       のばしているだけの音符には付けない（弾き直すように見えてしまうため） */
-    const lab = held ? { sol: [], let: [] } : labelsFor(n);
-    const last = lab.sol.length - 1;
-    if (state.showSol) lab.sol.forEach((s, j) => svgText(svg, cx, solY - (last - j) * 11, s, 11 * sc, '#6b7280'));
-    if (state.showLet) lab.let.forEach((s, j) => svgText(svg, cx, letY - (last - j) * 10, s, 10 * sc, '#9aa1ab'));
+    blocks.forEach(b => {
+      /* そのブロックに出す音。左右手別でないときは全部 */
+      const ps = b.side ? asc.filter(x => sideOf(x) === b.side) : asc;
+      if (!n.rest && !ps.length) return;        // この段にはこの音符の音がない
+
+      if (n.rest) {
+        svgText(svg, cx, b.numBot, '0', numSize, '#1c2024', '600');
+        if (heads.length === 0) heads.push(b.numBot - 6);
+      } else if (held) {
+        /* タイでつながった音は、弾き直さずに前の音をのばすだけ */
+        svgText(svg, cx, b.numBot, '−', numSize, '#1c2024');
+        ps.forEach(pp => { heads[asc.indexOf(pp)] = b.numBot - 6; });
+      } else {
+        /* いちばん低い音を下の行に置き、和音で足した音は上へ積む。
+           こうすると、ふつうの音符・休符・のばし棒と同じ行に主旋律がそろいます。
+           heads は「低い順」に入れる（[ ] キーで選ぶ tone と同じ数え方） */
+        ps.forEach((pp, g) => {
+          const ny = b.numBot - g * NV.toneH;
+          svgText(svg, cx, ny, numberOf(pp, accOf(n, pp)), numSize, '#1c2024', '600');
+          heads[asc.indexOf(pp)] = ny - 6;
+        });
+      }
+
+      /* のばし棒「−」。その音符に配られた幅の中へ等間隔に置く */
+      for (let j = 1; j <= d; j++) {
+        svgText(svg, cx + slot * j / (d + 1), b.numBot, '−', numSize, '#1c2024');
+      }
+      /* 付点は「最後ののばし棒の右」。のばし棒がなければ数字のすぐ右 */
+      if (n.dot) {
+        const base = d ? cx + slot * d / (d + 1) : cx;
+        svgText(svg, base + 12 * sc, b.numBot - 4, '・', 11 * sc, '#1c2024');
+      }
+
+      /* ドレミ・CDE。数字と同じく、いちばん低い音を下にそろえて上へ積む。
+         のばしているだけの音符には付けない（弾き直すように見えてしまうため） */
+      if (!n.rest && !held) {
+        if (state.showSol) ps.forEach((pp, g) =>
+          svgText(svg, cx, b.sol - g * 11, solfegeOf(pp, accOf(n, pp)), 11 * sc, '#6b7280'));
+        if (state.showLet) ps.forEach((pp, g) =>
+          svgText(svg, cx, b.let - g * 10, letterOf(pp, accOf(n, pp)), 10 * sc, '#9aa1ab'));
+      }
+    });
 
     geom[i] = { x: cx, line: line, top: top, bot: bot, heads: heads };
     x += slot;
@@ -850,33 +905,52 @@ function nvDrawMeasure(svg, m, x0, span, line, numBot, solY, letY, top, bot) {
      2本目・3本目の線は、その本数が要る音符が続いているところだけに引く
      （8分＋16分＋16分 なら、1本目は3つ通しで、2本目は後ろ2つぶん）。 */
   const half = 8 * sc;
-  const line1 = (ka, kb, j) => svg.appendChild(svgEl('rect', {
-    x: cxs[ka] - half, y: numBot + 4 + j * 3.5,
+  const line1 = (b, ka, kb, j) => svg.appendChild(svgEl('rect', {
+    x: cxs[ka] - half, y: b.numBot + 4 + j * 3.5,
     width: (cxs[kb] - cxs[ka]) + half * 2, height: 1.2, fill: '#1c2024' }));
 
-  const runs = beamRuns(m);
-  const joined = {};
-  runs.forEach(run => run.forEach(k => { joined[k] = true; }));
-  runs.forEach(run => {
-    const uOf = k => nvUnder(state.notes[m.idx[k]]);
-    const maxU = Math.max.apply(null, run.map(uOf));
-    for (let j = 0; j < maxU; j++) {
-      let a = -1;
-      run.forEach((k, r) => {
-        const has = uOf(k) > j;
-        if (has && a < 0) a = r;
-        if (a >= 0 && (!has || r === run.length - 1)) {
-          line1(run[a], run[has ? r : r - 1], j);
-          a = -1;
-        }
+  /* その音符がそのブロックに出ているか。休符はどちらの段にも出す */
+  const inBlock = (b, k) => {
+    const n = state.notes[m.idx[k]];
+    if (!b.side || n.rest) return true;
+    return n.p.some(x => sideOf(x) === b.side);
+  };
+
+  blocks.forEach(b => {
+    /* その段に出ている音符だけで、まとまりを作り直す */
+    const runs = [];
+    beamRuns(m).forEach(run => {
+      let cur = [];
+      run.forEach(k => {
+        if (inBlock(b, k)) { cur.push(k); return; }
+        if (cur.length > 1) runs.push(cur);
+        cur = [];
       });
-    }
-  });
-  /* まとまりに入らなかった音符（単独の8分音符や、短い休符）はその音符ぶんだけ */
-  m.idx.forEach((i, k) => {
-    if (joined[k]) return;
-    const u = nvUnder(state.notes[i]);
-    for (let j = 0; j < u; j++) line1(k, k, j);
+      if (cur.length > 1) runs.push(cur);
+    });
+    const joined = {};
+    runs.forEach(run => run.forEach(k => { joined[k] = true; }));
+    runs.forEach(run => {
+      const uOf = k => nvUnder(state.notes[m.idx[k]]);
+      const maxU = Math.max.apply(null, run.map(uOf));
+      for (let j = 0; j < maxU; j++) {
+        let a = -1;
+        run.forEach((k, r) => {
+          const has = uOf(k) > j;
+          if (has && a < 0) a = r;
+          if (a >= 0 && (!has || r === run.length - 1)) {
+            line1(b, run[a], run[has ? r : r - 1], j);
+            a = -1;
+          }
+        });
+      }
+    });
+    /* まとまりに入らなかった音符（単独の8分音符や、短い休符）はその音符ぶんだけ */
+    m.idx.forEach((i, k) => {
+      if (joined[k] || !inBlock(b, k)) return;
+      const u = nvUnder(state.notes[i]);
+      for (let j = 0; j < u; j++) line1(b, k, k, j);
+    });
   });
 }
 
@@ -3016,6 +3090,9 @@ const TUT = [
       '</ul>' +
       '<p><b>和音</b>は数字を縦に積みます。五線譜の玉と同じように、' +
       '<b>数字をクリックすればその音だけ</b>選んで直せます。</p>' +
+      '<p>となりの<b>「左右手別」</b>を押すと、<b>右の親指で弾く音を上、左の親指で弾く音を下</b>に' +
+      '分けて書きます。どちらの手で取る音かが分かるので、両手が入り組む曲で役に立ちます。' +
+      '五線譜・数字譜のどちらでも使えます（試作中です）。</p>' +
       '<div class="tip"><b>ドレミ</b>・<b>CDE</b> のチェックはそのまま効きます。' +
       '印刷や PNG も、切り替えた表示のまま書き出されます。' +
       '記号の読み方は楽譜のいちばん下にも入るので、印刷したものを人に渡しても伝わります。</div>'
@@ -3666,8 +3743,8 @@ function bindUi() {
   $('mUndo').addEventListener('click',    () => { undo(); blurAll(); });
 
   $('viewStaff').addEventListener('click', () => { setViewMode('staff');  blurAll(); });
-  $('viewGrand').addEventListener('click', () => { setViewMode('grand');  blurAll(); });
   $('viewNum').addEventListener('click',   () => { setViewMode('number'); blurAll(); });
+  $('viewHands').addEventListener('click', () => { setHandSplit(!handSplit); blurAll(); });
 
   $('modeEdit').addEventListener('click', () => { setInputMode('edit'); blurAll(); });
   $('modeAdd').addEventListener('click',  () => { setInputMode('add');  blurAll(); });
@@ -3857,8 +3934,11 @@ function boot() {
      この時点ではまだ描いていないので、ボタンの見た目だけそろえます */
   try {
     const v = localStorage.getItem(VIEW_KEY);
-    if (v) viewMode = v;
-    else if (localStorage.getItem(NUM_VIEW_KEY) === '1') viewMode = 'number';   // 昔の設定から
+    if (v === 'grand') { viewMode = 'staff'; handSplit = true; }   // 昔の「2段」
+    else if (v) viewMode = v;
+    else if (localStorage.getItem(NUM_VIEW_KEY) === '1') viewMode = 'number';   // もっと昔の設定から
+    const hs = localStorage.getItem(HAND_KEY);
+    if (hs) handSplit = hs === '1';
   } catch (e) { /* 無視 */ }
   syncViewButtons();
   readOnly = window.matchMedia(NARROW).matches;   // 画面の広さだけで決める
