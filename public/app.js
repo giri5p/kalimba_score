@@ -733,38 +733,54 @@ function drawNumberView(host, two) {
     const blockTop = y + 4;
     const blockBot = y + r.h - 8;
     const left = NV.margin + headW;
-    /* 画面に出す行の情報。left / sol / numBot は段の上端ぶんを足した実座標にする */
+    /* 画面に出す行の情報。y（段の上端）を足した実座標にする */
     const blocks = r.blocks.map((b, bi) => ({
       side: two ? (bi === 0 ? 1 : -1) : 0,
-      numBot: y + b.numBot, sol: y + b.sol, let: y + b.let }));
+      numBot: y + b.numBot, sol: y + b.sol, let: y + b.let,
+      top: y + b.top, bot: y + b.bot }));
+
+    /* 小節線は、ブロックごとに切って引く。上下つなげて引くと
+       右手と左手がひとかたまりに見えてしまうため */
+    const barAt = (x, w) => {
+      if (!two) { bar(x, blockTop + 4, blockBot - 4, w); return; }
+      blocks.forEach(b => bar(x, b.top, b.bot, w));
+    };
 
     sysGeom[li] = { top: blockTop, left: left - 6, bot: blockBot,
                     right: left + lineMs.length * mW };
+
+    /* 左手の段に、うすい下じきを敷く。どちらの手の行かがひと目で分かるように */
+    if (two) {
+      const b = blocks[1];
+      svg.appendChild(svgEl('rect', {
+        x: NV.margin, y: b.top - 4, width: W - NV.margin * 2, height: b.bot - b.top + 8,
+        rx: 6, fill: '#eef1f6' }));
+    }
 
     /* 段の先頭に小節番号。1段目だけ拍子も出す。
        拍子は、ふつうの音符と同じ行（いちばん下）にそろえる */
     svgText(svg, NV.margin + 8, numTop - 14, String(measureNo), 10.5, '#8a919b');
     /* 左右手別のときは、どちらの親指の段かを左端に書く */
     if (two) {
-      svgText(svg, NV.margin + 9, blocks[0].numBot, '右', 11, '#9aa1ab', '600');
-      svgText(svg, NV.margin + 9, blocks[1].numBot, '左', 11, '#9aa1ab', '600');
+      svgText(svg, NV.margin + 9, blocks[0].numBot, '右', 12, '#6b7280', '700');
+      svgText(svg, NV.margin + 9, blocks[1].numBot, '左', 12, '#6b7280', '700');
     }
     if (li === 0) {
-      /* 左右手別のときは「右」「左」の右どなりに置く */
-      svgText(svg, NV.margin + (two ? headW - 12 : headW / 2), numBot + 2,
+      /* 左右手別のときは「右」と「左」のあいだに置く */
+      svgText(svg, NV.margin + (two ? headW - 12 : headW / 2),
+              two ? (blocks[0].bot + blocks[1].top) / 2 + 4 : numBot + 2,
               state.beats + '/' + state.beatValue, 12, '#8a919b', '600');
     }
 
     lineMs.forEach((m, mi) => {
       const mx = left + mi * mW;
-      bar(mx, blockTop + 4, blockBot - 4);               // 小節の頭の縦線
+      barAt(mx);                                         // 小節の頭の縦線
       nvDrawMeasure(svg, m, mx + 10, mW - 20, li, blocks, blockTop, blockBot, sideOf);
       measureNo++;
     });
 
     /* 段の終わりの縦線。曲の終わりだけ太くする */
-    bar(left + lineMs.length * mW, blockTop + 4, blockBot - 4,
-        li === lines.length - 1 ? 3 : 1);
+    barAt(left + lineMs.length * mW, li === lines.length - 1 ? 3 : 1);
 
     y += r.h;
   });
@@ -805,8 +821,10 @@ function nvRows(tones) {
     let lt = 0, sol = 0;
     if (state.showLet) { y += 12 + (t - 1) * 10; lt = y; }
     if (state.showSol) { y += 13 + (t - 1) * 11; sol = y; }
-    blocks.push({ numTop: numTop, numBot: numBot, sol: sol, let: lt, bot: y });
-    top = y + 22;                                       // 次のブロックまでの空き
+    /* top / bot はそのブロックの枠。縦線や下じきを引く範囲に使う */
+    blocks.push({ numTop: numTop, numBot: numBot, sol: sol, let: lt,
+                  top: numTop - 20, bot: y + 5 });
+    top = y + 34;                                       // 次のブロックまでの空き
   });
   const last = blocks[blocks.length - 1];
   return { blocks: blocks, numTop: blocks[0].numTop, numBot: last.numBot,
