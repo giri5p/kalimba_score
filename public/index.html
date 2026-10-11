@@ -190,6 +190,12 @@
   .list .grip{flex:none;width:16px;text-align:center;color:#b6bcc6;
               cursor:grab;user-select:none;-webkit-user-select:none}
   .list button.mini{flex:none;padding:2px 6px;font-size:11px;line-height:1.4}
+  /* 上下ボタンは場所を取らないよう、うんと細くする */
+  .list button.ud{padding:1px 2px;font-size:10px;min-width:17px;line-height:1.3}
+  .sortbar{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+  .sortbar button.mini{padding:2px 8px;font-size:11.5px;line-height:1.5}
+  .sortbar button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+  .sortbar .hint{font-size:11px}
   .list .row.drag{opacity:.4}
   /* ドラッグ中、どこに入るかを行の上辺／下辺の線で示す */
   .list .row.dropb{box-shadow:inset 0 2px 0 var(--accent)}
@@ -333,6 +339,11 @@
     .modal{padding:0}
     .modal .box{border-radius:0;max-height:100vh;height:100%}
     .modal .box.tut{height:auto}
+    /* 狭い画面では曲名のぶんを稼ぐ。指では掴めないので ⠿ は隠し、▲▼ で動かしてもらう */
+    .list .grip{display:none}
+    .list .row{gap:5px;padding:6px 6px}
+    .list .row .sub{font-size:10px}
+    .list .fhead{gap:5px;padding:5px 6px}
     /* 広告モーダルも同じ理由で、横の余白は文字とボタンにだけ付ける */
     .admodal{padding:8px 0}
     .admodal .box{padding:14px 0;border-radius:0}
@@ -563,7 +574,12 @@ function writeAdmaxTag(tags) {
       <span class="flbl">入れ先</span>
       <select id="songFolder"></select>
       <button id="folderNew">＋新しいフォルダ</button>
-      <button id="songSort">名前順に並べ直す</button>
+    </div>
+    <div class="sortbar">
+      <span class="flbl">並べ替え</span>
+      <button class="mini" id="sortName" title="名前の順に並べ直します。もう一度押すと逆順">名前</button>
+      <button class="mini" id="sortDate" title="最終更新日の順に並べ直します。もう一度押すと逆順">更新日</button>
+      <span class="flbl hint">押すと並べ直します。そのあと手でも動かせます</span>
     </div>
     <div id="songList" class="list"></div>
 

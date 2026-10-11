@@ -2430,8 +2430,10 @@ function metaLoad() {
   return {
     folders: Array.isArray(m.folders) ? m.folders.slice() : [],   // フォルダの並び順
     of: (m.of && typeof m.of === 'object') ? m.of : {},           // 曲 → フォルダ名
+    at: (m.at && typeof m.at === 'object') ? m.at : {},           // 曲 → 最後に保存した時刻
     order: Array.isArray(m.order) ? m.order.slice() : [],         // 曲の並び順
-    closed: Array.isArray(m.closed) ? m.closed.slice() : []       // たたんでいるフォルダ
+    closed: Array.isArray(m.closed) ? m.closed.slice() : [],      // たたんでいるフォルダ
+    sort: (m.sort && typeof m.sort === 'object') ? m.sort : null  // 最後に押した並べ替え
   };
 }
 function metaStore(m) {
@@ -2883,6 +2885,7 @@ function renderSongList() {
   const meta = metaLoad();
   const g = libGroups(lib, meta);
   syncFolderSelect(g.folders);
+  syncSortButtons(meta);
   host.innerHTML = '';
   if (!Object.keys(lib).length) {
     const e = document.createElement('div');
@@ -2970,6 +2973,9 @@ function renderSongList() {
   const songRow = (name, grp) => {
     let count = '';
     try { count = JSON.parse(lib[name]).notes.length + '音'; } catch (e) { /* 無視 */ }
+    /* 最終更新日。前に保存した曲には記録がないので、そのときは出しません */
+    const at = meta.at[name];
+    if (at) count += (count ? '・' : '') + shortDate(at);
     const row = document.createElement('div');
     row.className = 'row song';
     row.draggable = true;
@@ -2989,8 +2995,13 @@ function renderSongList() {
     sub.textContent = count;
     row.appendChild(sub);
 
-    row.appendChild(btn('▲', '上へ', () => nudgeSong(name, -1)));
-    row.appendChild(btn('▼', '下へ', () => nudgeSong(name, 1)));
+    const ud = (label, title, fn) => {
+      const b = btn(label, title, fn);
+      b.className = 'mini ud';
+      return b;
+    };
+    row.appendChild(ud('▲', '上へ', () => nudgeSong(name, -1)));
+    row.appendChild(ud('▼', '下へ', () => nudgeSong(name, 1)));
 
     const open = document.createElement('button');
     open.textContent = '開く';
@@ -3007,6 +3018,7 @@ function renderSongList() {
       const m = metaLoad();
       m.order = m.order.filter(n => n !== name);
       delete m.of[name];
+      delete m.at[name];
       metaStore(m);
       renderSongList();
     });
@@ -3090,12 +3102,37 @@ function newFolder() {
   syncFolderSelect(m.folders, name);
 }
 
-/* 手で並べ替えたのをやめて、名前順に戻す（フォルダ分けはそのまま） */
-function sortSongsByName() {
+/* 名前／最終更新日で並べ直す。押すたびに逆順になります。
+   並び順は1本なので、フォルダ分けはそのままで、それぞれの中が並び替わります。
+   dir は 1 が昇順（名前なら あ→ん、更新日なら古い順）。
+   更新日は「新しいものを先に見たい」ことが多いので、はじめは逆順から */
+function sortSongs(key) {
   const m = metaLoad();
-  m.order = Object.keys(libLoad()).sort((a, b) => a.localeCompare(b, 'ja'));
+  const cur = m.sort || {};
+  const first = key === 'updated' ? -1 : 1;
+  const dir = cur.key === key ? -cur.dir : first;
+  const at = m.at;
+  const names = Object.keys(libLoad());
+  names.sort((a, b) => {
+    const d = key === 'updated' ? (at[a] || 0) - (at[b] || 0)
+                                : a.localeCompare(b, 'ja');
+    return (d || a.localeCompare(b, 'ja')) * dir;
+  });
+  m.order = names;
+  m.sort = { key: key, dir: dir };
   metaStore(m);
   renderSongList();
+}
+
+/* 並べ替えボタンに、いまどちら向きで並んでいるかの矢印を出す */
+function syncSortButtons(meta) {
+  const cur = meta.sort || {};
+  [['sortName', 'name', '名前'], ['sortDate', 'updated', '更新日']].forEach(([id, key, label]) => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    b.textContent = cur.key === key ? label + (cur.dir > 0 ? ' ▲' : ' ▼') : label;
+    b.classList.toggle('on', cur.key === key);
+  });
 }
 
 function saveSong() {
@@ -3111,6 +3148,7 @@ function saveSong() {
   const folder = sel ? sel.value : '';
   const meta = metaLoad();
   if (folder) meta.of[name] = folder; else delete meta.of[name];
+  meta.at[name] = Date.now();
   if (meta.order.indexOf(name) < 0) meta.order.push(name);
   meta.closed = meta.closed.filter(f => f !== (folder || NOFOLDER));
   metaStore(meta);
@@ -4130,10 +4168,8 @@ function bindUi() {
   $('acctLogout').addEventListener('click', () => acctLogout());
   $('acctDelete').addEventListener('click', () => acctDelete());
   $('folderNew').addEventListener('click', () => newFolder());
-  $('songSort').addEventListener('click', () => {
-    if (!confirm('手で並べ替えたのをやめて、名前順に戻しますか？\nフォルダ分けはそのままです。')) return;
-    sortSongsByName();
-  });
+  $('sortName').addEventListener('click', () => sortSongs('name'));
+  $('sortDate').addEventListener('click', () => sortSongs('updated'));
   $('cloudSave').addEventListener('click', () => cloudSave());
   $('cloudReload').addEventListener('click', () => cloudReload());
   /* パスワード欄で Enter を押したらログイン */
