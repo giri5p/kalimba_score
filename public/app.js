@@ -2995,13 +2995,17 @@ function renderSongList() {
     sub.textContent = count;
     row.appendChild(sub);
 
+    /* 上下ボタンは縦に積む。横に並べると、そのぶん曲名が狭くなるため */
+    const udcol = document.createElement('div');
+    udcol.className = 'udcol';
     const ud = (label, title, fn) => {
       const b = btn(label, title, fn);
       b.className = 'mini ud';
-      return b;
+      udcol.appendChild(b);
     };
-    row.appendChild(ud('▲', '上へ', () => nudgeSong(name, -1)));
-    row.appendChild(ud('▼', '下へ', () => nudgeSong(name, 1)));
+    ud('▲', '上へ', () => nudgeSong(name, -1));
+    ud('▼', '下へ', () => nudgeSong(name, 1));
+    row.appendChild(udcol);
 
     const open = document.createElement('button');
     open.textContent = '開く';
