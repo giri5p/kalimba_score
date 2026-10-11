@@ -2416,6 +2416,105 @@ function libStore(obj) {
   }
 }
 
+/* ---------- 曲リストの並び順とフォルダ ----------
+   曲そのもの（kalimba-library-v1）には手を入れず、
+   「どのフォルダに入れたか」「どの順に並べるか」だけを別に覚えます。
+   こうしておくと、昔の保存や JSON の読み書き、クラウドはそのまま使えます。 */
+const LIBMETA_KEY = 'kalimba-library-meta-v1';
+const NOFOLDER = '';                        // フォルダに入れていない曲
+
+function metaLoad() {
+  let m = null;
+  try { m = JSON.parse(localStorage.getItem(LIBMETA_KEY)); } catch (e) { /* 無視 */ }
+  if (!m || typeof m !== 'object') m = {};
+  return {
+    folders: Array.isArray(m.folders) ? m.folders.slice() : [],   // フォルダの並び順
+    of: (m.of && typeof m.of === 'object') ? m.of : {},           // 曲 → フォルダ名
+    order: Array.isArray(m.order) ? m.order.slice() : [],         // 曲の並び順
+    closed: Array.isArray(m.closed) ? m.closed.slice() : []       // たたんでいるフォルダ
+  };
+}
+function metaStore(m) {
+  try { localStorage.setItem(LIBMETA_KEY, JSON.stringify(m)); } catch (e) { /* 無視 */ }
+}
+
+/* いま入っている曲に合わせて、並び順とフォルダをそろえる。
+   知らない曲はうしろに足し、消えた曲は落とす。
+   groups はフォルダごとの曲。フォルダなしはいちばん下に置きます。 */
+function libGroups(lib, meta) {
+  const names = Object.keys(lib);
+  const known = {};
+  names.forEach(n => { known[n] = true; });
+  const order = meta.order.filter(n => known[n]);
+  const seen = {};
+  order.forEach(n => { seen[n] = true; });
+  names.filter(n => !seen[n]).sort((a, b) => a.localeCompare(b, 'ja'))
+       .forEach(n => order.push(n));
+
+  /* 曲は入っているのに、フォルダの一覧から抜けてしまったものを戻す */
+  const folders = meta.folders.slice();
+  order.forEach(n => {
+    const f = meta.of[n];
+    if (f && folders.indexOf(f) < 0) folders.push(f);
+  });
+
+  const groups = folders.map(f => ({ name: f, songs: [] }));
+  groups.push({ name: NOFOLDER, songs: [] });
+  const byName = {};
+  groups.forEach(g => { byName[g.name] = g; });
+  order.forEach(n => { (byName[meta.of[n]] || byName[NOFOLDER]).songs.push(n); });
+
+  /* 画面に出すかたまり。フォルダを1つも作っていないうちは、ただの一覧にする */
+  const plain = folders.length === 0;
+  const shown = plain ? groups
+    : groups.filter(g => g.name !== NOFOLDER || g.songs.length);
+  return { order: order, folders: folders, groups: groups, shown: shown, plain: plain };
+}
+
+/* name を folder の中の pos 番目へ移す（pos は、その曲を抜いた状態で数えた位置）。
+   並び順は全体で1本なので、同じフォルダの曲との前後関係だけ合わせれば足ります */
+function moveSongTo(name, folder, pos) {
+  const meta = metaLoad();
+  const g = libGroups(libLoad(), meta);
+  const fname = folder || NOFOLDER;
+  const order = g.order.filter(n => n !== name);
+  const inFolder = order.filter(n => (meta.of[n] || NOFOLDER) === fname);
+  let at = order.length;
+  if (inFolder.length) {
+    at = pos >= inFolder.length
+       ? order.indexOf(inFolder[inFolder.length - 1]) + 1
+       : order.indexOf(inFolder[pos]);
+  }
+  order.splice(at, 0, name);
+  meta.order = order;
+  meta.folders = g.folders;
+  if (fname) meta.of[name] = fname; else delete meta.of[name];
+  meta.closed = meta.closed.filter(f => f !== fname);   // 移した先は開いておく
+  metaStore(meta);
+  renderSongList();
+}
+
+/* ▲▼。画面に出ている並びをひとつぶん上/下へ。
+   フォルダの境を越えるときは、となりのフォルダへ移ります */
+function nudgeSong(name, dir) {
+  const meta = metaLoad();
+  const g = libGroups(libLoad(), meta);
+  let gi = -1, si = -1;
+  g.shown.forEach((grp, k) => {
+    const i = grp.songs.indexOf(name);
+    if (i >= 0) { gi = k; si = i; }
+  });
+  if (gi < 0) return;
+  const grp = g.shown[gi];
+  if (dir < 0) {
+    if (si > 0) moveSongTo(name, grp.name, si - 1);
+    else if (gi > 0) moveSongTo(name, g.shown[gi - 1].name, g.shown[gi - 1].songs.length);
+  } else {
+    if (si < grp.songs.length - 1) moveSongTo(name, grp.name, si + 1);
+    else if (gi < g.shown.length - 1) moveSongTo(name, g.shown[gi + 1].name, 0);
+  }
+}
+
 /* ---------- URL 用の短い書き方 ----------
    1音 = [長さ1文字][休符/タイ+音数 1文字][音の高さ ×音数]
    というふうに 1 文字ずつに詰めて、JSON より短い URL にする */
@@ -2741,6 +2840,9 @@ function openSongs() {
   document.getElementById('songUrl').hidden = true;
   document.getElementById('songName').value = state.title;
   renderSongList();
+  /* いま開いている曲が保存ずみなら、その曲のフォルダを「入れ先」に出しておく */
+  const meta = metaLoad();
+  syncFolderSelect(libGroups(libLoad(), meta).folders, meta.of[state.title] || NOFOLDER);
   acctMsg(null);
   renderAccount();
   document.getElementById('songs').hidden = false;
@@ -2748,29 +2850,153 @@ function openSongs() {
 }
 function closeSongs() { document.getElementById('songs').hidden = true; }
 
+/* いま掴んでいる曲（ドラッグ中だけ名前が入る） */
+let dragName = null;
+
+/* 「入れ先」のプルダウンを作り直す。いま選んでいたフォルダは覚えておく */
+function syncFolderSelect(folders, want) {
+  const sel = document.getElementById('songFolder');
+  if (!sel) return;
+  const keep = want != null ? want : sel.value;
+  sel.innerHTML = '';
+  const add = (value, label) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = label;
+    sel.appendChild(o);
+  };
+  add(NOFOLDER, '（フォルダなし）');
+  folders.forEach(f => add(f, f));
+  sel.value = folders.indexOf(keep) >= 0 ? keep : NOFOLDER;
+}
+
+/* ドラッグ中に出している「ここに入ります」の線を消す */
+function clearDropMark(host) {
+  host.querySelectorAll('.dropb,.dropa,.over').forEach(e => {
+    e.classList.remove('dropb', 'dropa', 'over');
+  });
+}
+
 function renderSongList() {
   const host = document.getElementById('songList');
   const lib = libLoad();
-  const names = Object.keys(lib).sort((a, b) => a.localeCompare(b, 'ja'));
+  const meta = metaLoad();
+  const g = libGroups(lib, meta);
+  syncFolderSelect(g.folders);
   host.innerHTML = '';
-  if (!names.length) {
+  if (!Object.keys(lib).length) {
     const e = document.createElement('div');
     e.className = 'empty';
     e.textContent = 'まだ保存した曲はありません。上の欄に名前を入れて「この名前で保存」。';
     host.appendChild(e);
     return;
   }
-  names.forEach(name => {
+
+  const closed = {};
+  meta.closed.forEach(f => { closed[f] = true; });
+
+  const btn = (label, title, fn) => {
+    const b = document.createElement('button');
+    b.className = 'mini';
+    b.textContent = label;
+    if (title) b.title = title;
+    b.addEventListener('click', fn);
+    return b;
+  };
+
+  /* ---- フォルダの見出し ---- */
+  const folderHead = (grp, gi) => {
+    const h = document.createElement('div');
+    h.className = 'fhead';
+    const real = grp.name !== NOFOLDER;
+    const shut = !!closed[grp.name];
+    h.appendChild(btn(shut ? '▸' : '▾', shut ? '開く' : 'たたむ', () => {
+      const m = metaLoad();
+      m.closed = shut ? m.closed.filter(f => f !== grp.name) : m.closed.concat([grp.name]);
+      metaStore(m);
+      renderSongList();
+    }));
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = real ? grp.name : 'フォルダなし';
+    h.appendChild(nm);
+    const cnt = document.createElement('span');
+    cnt.className = 'cnt';
+    cnt.textContent = grp.songs.length + '曲';
+    h.appendChild(cnt);
+
+    if (real) {
+      h.appendChild(btn('名前', 'フォルダの名前を変える', () => {
+        const to = (prompt('フォルダの新しい名前', grp.name) || '').trim();
+        if (!to || to === grp.name) return;
+        const m = metaLoad();
+        if (m.folders.indexOf(to) >= 0) { alert('「' + to + '」はすでにあります。'); return; }
+        m.folders = m.folders.map(f => (f === grp.name ? to : f));
+        Object.keys(m.of).forEach(n => { if (m.of[n] === grp.name) m.of[n] = to; });
+        m.closed = m.closed.map(f => (f === grp.name ? to : f));
+        metaStore(m);
+        renderSongList();
+      }));
+      h.appendChild(btn('▲', 'このフォルダを上へ', () => moveFolder(grp.name, -1)));
+      h.appendChild(btn('▼', 'このフォルダを下へ', () => moveFolder(grp.name, 1)));
+      h.appendChild(btn('削除', 'フォルダだけ消す（中の曲は残ります）', () => {
+        if (!confirm('フォルダ「' + grp.name + '」を削除しますか？\n' +
+                     '中の' + grp.songs.length + '曲は消えず、「フォルダなし」に移ります。')) return;
+        const m = metaLoad();
+        m.folders = m.folders.filter(f => f !== grp.name);
+        Object.keys(m.of).forEach(n => { if (m.of[n] === grp.name) delete m.of[n]; });
+        m.closed = m.closed.filter(f => f !== grp.name);
+        metaStore(m);
+        renderSongList();
+      }));
+    }
+
+    /* 見出しに落とすと、そのフォルダのいちばん上へ入る */
+    h.addEventListener('dragover', e => {
+      if (!dragName) return;
+      e.preventDefault();
+      clearDropMark(host);
+      h.classList.add('over');
+    });
+    h.addEventListener('drop', e => {
+      if (!dragName) return;
+      e.preventDefault();
+      moveSongTo(dragName, grp.name, 0);
+    });
+    return h;
+  };
+
+  /* ---- 曲の行 ---- */
+  const songRow = (name, grp) => {
     let count = '';
-    try { count = JSON.parse(lib[name]).notes.length + '音'; } catch (e) {}
+    try { count = JSON.parse(lib[name]).notes.length + '音'; } catch (e) { /* 無視 */ }
     const row = document.createElement('div');
-    row.className = 'row';
-    row.innerHTML = '<span class="nm"></span><span class="sub"></span>';
-    row.querySelector('.nm').textContent = name;
-    row.querySelector('.sub').textContent = count;
+    row.className = 'row song';
+    row.draggable = true;
+
+    const grip = document.createElement('span');
+    grip.className = 'grip';
+    grip.textContent = '⠿';
+    grip.title = 'つかんで動かすと並べ替えられます';
+    row.appendChild(grip);
+
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = name;
+    row.appendChild(nm);
+    const sub = document.createElement('span');
+    sub.className = 'sub';
+    sub.textContent = count;
+    row.appendChild(sub);
+
+    row.appendChild(btn('▲', '上へ', () => nudgeSong(name, -1)));
+    row.appendChild(btn('▼', '下へ', () => nudgeSong(name, 1)));
+
     const open = document.createElement('button');
     open.textContent = '開く';
     open.addEventListener('click', () => { loadSong(name); });
+    row.appendChild(open);
+
     const del = document.createElement('button');
     del.textContent = '削除';
     del.addEventListener('click', () => {
@@ -2778,12 +3004,98 @@ function renderSongList() {
       const l = libLoad();
       delete l[name];
       libStore(l);
+      const m = metaLoad();
+      m.order = m.order.filter(n => n !== name);
+      delete m.of[name];
+      metaStore(m);
       renderSongList();
     });
-    row.appendChild(open);
     row.appendChild(del);
-    host.appendChild(row);
+
+    /* ---- つかんで動かす（パソコン向け。スマホは▲▼で動かします） ---- */
+    row.addEventListener('dragstart', e => {
+      dragName = name;
+      row.classList.add('drag');
+      try {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', name);
+      } catch (err) { /* 無視 */ }
+    });
+    row.addEventListener('dragend', () => {
+      dragName = null;
+      row.classList.remove('drag');
+      clearDropMark(host);
+    });
+    const half = e => {
+      const r = row.getBoundingClientRect();
+      return (e.clientY - r.top) > r.height / 2;      // 行の下半分なら「この行の下」
+    };
+    row.addEventListener('dragover', e => {
+      if (!dragName || dragName === name) return;
+      e.preventDefault();
+      clearDropMark(host);
+      row.classList.add(half(e) ? 'dropa' : 'dropb');
+    });
+    row.addEventListener('drop', e => {
+      if (!dragName || dragName === name) return;
+      e.preventDefault();
+      dropOnSong(dragName, grp.name, name, half(e));
+    });
+    return row;
+  };
+
+  g.shown.forEach((grp, gi) => {
+    if (!g.plain) {
+      host.appendChild(folderHead(grp, gi));
+      if (closed[grp.name]) return;
+    }
+    grp.songs.forEach(name => host.appendChild(songRow(name, grp)));
   });
+}
+
+/* フォルダそのものを上下に動かす */
+function moveFolder(name, dir) {
+  const m = metaLoad();
+  const i = m.folders.indexOf(name);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= m.folders.length) return;
+  m.folders[i] = m.folders[j];
+  m.folders[j] = name;
+  metaStore(m);
+  renderSongList();
+}
+
+/* ドラッグした曲を、target の前／後ろへ入れる */
+function dropOnSong(name, folder, target, after) {
+  const meta = metaLoad();
+  const g = libGroups(libLoad(), meta);
+  const fname = folder || NOFOLDER;
+  const grp = g.groups.filter(x => x.name === fname)[0];
+  const songs = (grp ? grp.songs : []).filter(n => n !== name);
+  let pos = songs.indexOf(target);
+  if (pos < 0) pos = songs.length;
+  else if (after) pos++;
+  moveSongTo(name, fname, pos);
+}
+
+/* ＋新しいフォルダ */
+function newFolder() {
+  const name = (prompt('フォルダの名前') || '').trim();
+  if (!name) return;
+  const m = metaLoad();
+  if (m.folders.indexOf(name) >= 0) { alert('「' + name + '」はすでにあります。'); return; }
+  m.folders.push(name);
+  metaStore(m);
+  renderSongList();
+  syncFolderSelect(m.folders, name);
+}
+
+/* 手で並べ替えたのをやめて、名前順に戻す（フォルダ分けはそのまま） */
+function sortSongsByName() {
+  const m = metaLoad();
+  m.order = Object.keys(libLoad()).sort((a, b) => a.localeCompare(b, 'ja'));
+  metaStore(m);
+  renderSongList();
 }
 
 function saveSong() {
@@ -2794,6 +3106,14 @@ function saveSong() {
   document.getElementById('title').value = name;
   lib[name] = serialize();
   if (!libStore(lib)) return;
+  /* 「入れ先」で選んだフォルダに入れる。はじめての曲は、そのフォルダのいちばん下へ */
+  const sel = document.getElementById('songFolder');
+  const folder = sel ? sel.value : '';
+  const meta = metaLoad();
+  if (folder) meta.of[name] = folder; else delete meta.of[name];
+  if (meta.order.indexOf(name) < 0) meta.order.push(name);
+  meta.closed = meta.closed.filter(f => f !== (folder || NOFOLDER));
+  metaStore(meta);
   autosave();
   syncPanel();
   renderSongList();
@@ -3809,6 +4129,11 @@ function bindUi() {
   $('acctRegister').addEventListener('click', () => acctSubmit('register'));
   $('acctLogout').addEventListener('click', () => acctLogout());
   $('acctDelete').addEventListener('click', () => acctDelete());
+  $('folderNew').addEventListener('click', () => newFolder());
+  $('songSort').addEventListener('click', () => {
+    if (!confirm('手で並べ替えたのをやめて、名前順に戻しますか？\nフォルダ分けはそのままです。')) return;
+    sortSongsByName();
+  });
   $('cloudSave').addEventListener('click', () => cloudSave());
   $('cloudReload').addEventListener('click', () => cloudReload());
   /* パスワード欄で Enter を押したらログイン */

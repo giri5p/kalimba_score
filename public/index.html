@@ -180,6 +180,21 @@
   .list .row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .list .row .sub{font-size:11px;color:var(--muted);flex:none}
   .list .empty{padding:14px;text-align:center;color:var(--muted);font-size:12.5px}
+  /* 曲リストのフォルダ分けと並び替え */
+  .list .fhead{display:flex;gap:6px;align-items:center;padding:5px 8px;
+               background:#f4f6f9;border-bottom:1px solid #e4e8ee;
+               font-size:12.5px;font-weight:600}
+  .list .fhead .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .list .fhead .cnt{font-size:11px;color:var(--muted);font-weight:400;flex:none}
+  .list .fhead.over{background:var(--accent-soft)}
+  .list .grip{flex:none;width:16px;text-align:center;color:#b6bcc6;
+              cursor:grab;user-select:none;-webkit-user-select:none}
+  .list button.mini{flex:none;padding:2px 6px;font-size:11px;line-height:1.4}
+  .list .row.drag{opacity:.4}
+  /* ドラッグ中、どこに入るかを行の上辺／下辺の線で示す */
+  .list .row.dropb{box-shadow:inset 0 2px 0 var(--accent)}
+  .list .row.dropa{box-shadow:inset 0 -2px 0 var(--accent)}
+  .flbl{font-size:12px;color:var(--muted);flex:none}
   .note{font-size:11.5px;color:var(--muted);line-height:1.7;margin:0}
   /* 曲パネルの中の区切り（この端末 / クラウド） */
   .sect{border-top:1px solid var(--line);margin-top:2px;padding-top:12px}
@@ -187,6 +202,7 @@
             margin-bottom:8px;font-size:13.5px}
   .secthead .who{font-size:12px;color:var(--muted);text-align:right;min-width:0;
                  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #songList{max-height:42vh}
   #cloudList{max-height:26vh}
   .msg{font-size:12px;margin:0 0 8px}
   .msg.err{color:#b3261e}
@@ -543,6 +559,12 @@ function writeAdmaxTag(tags) {
       <input type="text" id="songName" placeholder="曲の名前">
       <button class="pri" id="songSave">この名前で保存</button>
     </div>
+    <div class="mrow wrap">
+      <span class="flbl">入れ先</span>
+      <select id="songFolder"></select>
+      <button id="folderNew">＋新しいフォルダ</button>
+      <button id="songSort">名前順に並べ直す</button>
+    </div>
     <div id="songList" class="list"></div>
 
     <!-- かんたんアカウント（クラウド保存）。
@@ -602,6 +624,8 @@ function writeAdmaxTag(tags) {
     <p class="note" id="songNote">
       保存先は<b>この端末のこのブラウザの中</b>です。別の端末（スマホなど）へ移すときは
       「🔗 リンクをコピー」で出たURLを送ってください。そのURLを開くと曲がそのまま開きます。
+      曲が増えたら<b>フォルダ</b>で分けられます。⠿ をつかむか ▲▼ で並べ替えられます
+      （フォルダと並び順も、この端末のこのブラウザの中だけで覚えます）。
     </p>
   </div>
 </div>
