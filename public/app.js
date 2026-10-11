@@ -2423,9 +2423,8 @@ function libStore(obj) {
 const LIBMETA_KEY = 'kalimba-library-meta-v1';
 const NOFOLDER = '';                        // フォルダに入れていない曲
 
-function metaLoad() {
-  let m = null;
-  try { m = JSON.parse(localStorage.getItem(LIBMETA_KEY)); } catch (e) { /* 無視 */ }
+/* 外から来たものでも困らないよう、形をそろえる */
+function metaNorm(m) {
   if (!m || typeof m !== 'object') m = {};
   return {
     folders: Array.isArray(m.folders) ? m.folders.slice() : [],   // フォルダの並び順
@@ -2436,6 +2435,10 @@ function metaLoad() {
     sort: (m.sort && typeof m.sort === 'object') ? m.sort : null  // 最後に押した並べ替え
   };
 }
+function metaLoad() {
+  try { return metaNorm(JSON.parse(localStorage.getItem(LIBMETA_KEY))); }
+  catch (e) { return metaNorm(null); }
+}
 function metaStore(m) {
   try { localStorage.setItem(LIBMETA_KEY, JSON.stringify(m)); } catch (e) { /* 無視 */ }
 }
@@ -2443,8 +2446,7 @@ function metaStore(m) {
 /* いま入っている曲に合わせて、並び順とフォルダをそろえる。
    知らない曲はうしろに足し、消えた曲は落とす。
    groups はフォルダごとの曲。フォルダなしはいちばん下に置きます。 */
-function libGroups(lib, meta) {
-  const names = Object.keys(lib);
+function libGroups(names, meta) {
   const known = {};
   names.forEach(n => { known[n] = true; });
   const order = meta.order.filter(n => known[n]);
@@ -2473,49 +2475,6 @@ function libGroups(lib, meta) {
   return { order: order, folders: folders, groups: groups, shown: shown, plain: plain };
 }
 
-/* name を folder の中の pos 番目へ移す（pos は、その曲を抜いた状態で数えた位置）。
-   並び順は全体で1本なので、同じフォルダの曲との前後関係だけ合わせれば足ります */
-function moveSongTo(name, folder, pos) {
-  const meta = metaLoad();
-  const g = libGroups(libLoad(), meta);
-  const fname = folder || NOFOLDER;
-  const order = g.order.filter(n => n !== name);
-  const inFolder = order.filter(n => (meta.of[n] || NOFOLDER) === fname);
-  let at = order.length;
-  if (inFolder.length) {
-    at = pos >= inFolder.length
-       ? order.indexOf(inFolder[inFolder.length - 1]) + 1
-       : order.indexOf(inFolder[pos]);
-  }
-  order.splice(at, 0, name);
-  meta.order = order;
-  meta.folders = g.folders;
-  if (fname) meta.of[name] = fname; else delete meta.of[name];
-  meta.closed = meta.closed.filter(f => f !== fname);   // 移した先は開いておく
-  metaStore(meta);
-  renderSongList();
-}
-
-/* ▲▼。画面に出ている並びをひとつぶん上/下へ。
-   フォルダの境を越えるときは、となりのフォルダへ移ります */
-function nudgeSong(name, dir) {
-  const meta = metaLoad();
-  const g = libGroups(libLoad(), meta);
-  let gi = -1, si = -1;
-  g.shown.forEach((grp, k) => {
-    const i = grp.songs.indexOf(name);
-    if (i >= 0) { gi = k; si = i; }
-  });
-  if (gi < 0) return;
-  const grp = g.shown[gi];
-  if (dir < 0) {
-    if (si > 0) moveSongTo(name, grp.name, si - 1);
-    else if (gi > 0) moveSongTo(name, g.shown[gi - 1].name, g.shown[gi - 1].songs.length);
-  } else {
-    if (si < grp.songs.length - 1) moveSongTo(name, grp.name, si + 1);
-    else if (gi < g.shown.length - 1) moveSongTo(name, g.shown[gi + 1].name, 0);
-  }
-}
 
 /* ---------- URL 用の短い書き方 ----------
    1音 = [長さ1文字][休符/タイ+音数 1文字][音の高さ ×音数]
@@ -2612,6 +2571,8 @@ const AUTH_KEY = 'kalimba-auth-v1';
 const PBKDF2_ROUNDS = 150000;
 let auth = null;          // {token, id}。ログインしていなければ null
 let cloudSongs = [];      // クラウドにある曲の一覧
+let cloudMeta = null;     // クラウドの曲の並び順とフォルダ分け（サーバーに預けてある）
+let cloudMetaTimer = 0;
 
 function authLoad() {
   try { auth = JSON.parse(localStorage.getItem(AUTH_KEY)) || null; } catch (e) { auth = null; }
@@ -2673,6 +2634,9 @@ function acctBusy(on) {
     if (b) b.disabled = on;
   });
 }
+/* ログアウトや退会のあとに持ち越さない */
+function cloudForget() { cloudSongs = []; cloudMeta = null; }
+
 function renderAccount() {
   const out = document.getElementById('acctOut');
   const inn = document.getElementById('acctIn');
@@ -2692,34 +2656,6 @@ function shortDate(ms) {
   return (d.getMonth() + 1) + '/' + d.getDate();
 }
 
-function renderCloudList() {
-  const host = document.getElementById('cloudList');
-  if (!host) return;
-  host.innerHTML = '';
-  if (!cloudSongs.length) {
-    const e = document.createElement('div');
-    e.className = 'empty';
-    e.textContent = 'クラウドにはまだ曲がありません。上の欄に名前を入れて「この名前でクラウドに保存」。';
-    host.appendChild(e);
-    return;
-  }
-  cloudSongs.forEach(song => {
-    const row = document.createElement('div');
-    row.className = 'row';
-    row.innerHTML = '<span class="nm"></span><span class="sub"></span>';
-    row.querySelector('.nm').textContent = song.name;
-    row.querySelector('.sub').textContent = song.notes + '音・' + shortDate(song.updated);
-    const open = document.createElement('button');
-    open.textContent = '開く';
-    open.addEventListener('click', () => cloudOpen(song.name));
-    const del = document.createElement('button');
-    del.textContent = '削除';
-    del.addEventListener('click', () => cloudDelete(song.name));
-    row.appendChild(open);
-    row.appendChild(del);
-    host.appendChild(row);
-  });
-}
 
 /* ---------- 操作 ---------- */
 async function acctSubmit(kind) {
@@ -2755,7 +2691,7 @@ async function acctSubmit(kind) {
 async function acctLogout() {
   try { await apiCall('/api/logout', { method: 'POST' }); } catch (e) { /* 手元だけでも切る */ }
   authStore(null);
-  cloudSongs = [];
+  cloudForget();
   renderAccount();
   acctMsg('ログアウトしました。', 'ok');
 }
@@ -2775,7 +2711,7 @@ async function acctDelete() {
   try {
     const r = await apiCall('/api/account', { method: 'DELETE' });
     authStore(null);
-    cloudSongs = [];
+    cloudForget();
     renderAccount();
     acctMsg('アカウントを削除しました（曲 ' + (r.deleted || 0) + ' 件）。', 'ok');
   } catch (e) { acctMsg(e.message, 'err'); }
@@ -2784,12 +2720,35 @@ async function acctDelete() {
 
 async function cloudReload() {
   if (!auth) return;
+  await cloudMetaFlush();        // 書きかけの並び順を消さないように
   try {
     const r = await apiCall('/api/songs');
     cloudSongs = r.songs || [];
   } catch (e) { cloudSongs = []; acctMsg(e.message, 'err'); }
+  /* 並び順とフォルダ分けも一緒にとり直す。
+     取れなくても曲は出せるので、ここで止めはしません */
+  try { cloudMeta = metaNorm((await apiCall('/api/meta')).meta); }
+  catch (e) { cloudMeta = metaNorm(cloudMeta); }
   renderCloudList();
 }
+
+/* 並び順をサーバーへ預ける */
+async function cloudMetaPut() {
+  clearTimeout(cloudMetaTimer);
+  cloudMetaTimer = 0;
+  if (!auth || !cloudMeta) return;
+  try {
+    await apiCall('/api/meta', { method: 'PUT', body: { meta: cloudMeta } });
+  } catch (e) { acctMsg('並び順を保存できませんでした: ' + e.message, 'err'); }
+}
+/* 連打しても通信が重ならないよう、少しまとめてから送る */
+function cloudMetaSave() {
+  if (!auth) return;
+  clearTimeout(cloudMetaTimer);
+  cloudMetaTimer = setTimeout(cloudMetaPut, 400);
+}
+/* 送信待ちがあれば先に送り切る。一覧を取り直す前に必ず呼ぶ */
+async function cloudMetaFlush() { if (cloudMetaTimer) await cloudMetaPut(); }
 
 async function cloudSave() {
   if (!auth) return;
@@ -2800,6 +2759,15 @@ async function cloudSave() {
   acctMsg('保存しています…');
   try {
     await apiCall('/api/songs', { method: 'PUT', body: { name: name, data: serialize() } });
+    /* 「入れ先」で選んだフォルダに入れる。はじめての曲は、そのフォルダのいちばん下へ */
+    const sel = document.getElementById('cloudFolder');
+    const folder = sel ? sel.value : '';
+    const m = metaNorm(cloudMeta);
+    if (folder) m.of[name] = folder; else delete m.of[name];
+    if (m.order.indexOf(name) < 0) m.order.push(name);
+    m.closed = m.closed.filter(f => f !== (folder || NOFOLDER));
+    cloudMeta = m;
+    await cloudMetaPut();
     state.title = name;
     document.getElementById('title').value = name;
     autosave();
@@ -2831,6 +2799,11 @@ async function cloudDelete(name) {
   acctBusy(true);
   try {
     await apiCall('/api/songs?name=' + encodeURIComponent(name), { method: 'DELETE' });
+    const m = metaNorm(cloudMeta);
+    m.order = m.order.filter(n => n !== name);
+    delete m.of[name];
+    cloudMeta = m;
+    await cloudMetaPut();
     await cloudReload();
     acctMsg('クラウドの「' + name + '」を削除しました。', 'ok');
   } catch (e) { acctMsg(e.message, 'err'); }
@@ -2844,7 +2817,8 @@ function openSongs() {
   renderSongList();
   /* いま開いている曲が保存ずみなら、その曲のフォルダを「入れ先」に出しておく */
   const meta = metaLoad();
-  syncFolderSelect(libGroups(libLoad(), meta).folders, meta.of[state.title] || NOFOLDER);
+  syncFolderSelect('songFolder', libGroups(Object.keys(libLoad()), meta).folders,
+                   meta.of[state.title] || NOFOLDER);
   acctMsg(null);
   renderAccount();
   document.getElementById('songs').hidden = false;
@@ -2856,8 +2830,8 @@ function closeSongs() { document.getElementById('songs').hidden = true; }
 let dragName = null;
 
 /* 「入れ先」のプルダウンを作り直す。いま選んでいたフォルダは覚えておく */
-function syncFolderSelect(folders, want) {
-  const sel = document.getElementById('songFolder');
+function syncFolderSelect(id, folders, want) {
+  const sel = document.getElementById(id);
   if (!sel) return;
   const keep = want != null ? want : sel.value;
   sel.innerHTML = '';
@@ -2879,24 +2853,109 @@ function clearDropMark(host) {
   });
 }
 
-function renderSongList() {
-  const host = document.getElementById('songList');
-  const lib = libLoad();
-  const meta = metaLoad();
-  const g = libGroups(lib, meta);
-  syncFolderSelect(g.folders);
-  syncSortButtons(meta);
+/* 並べ替えボタンに、いまどちら向きで並んでいるかの矢印を出す */
+function syncSortButtons(cfg, meta) {
+  const cur = meta.sort || {};
+  [[cfg.sortIds[0], 'name', '名前'], [cfg.sortIds[1], 'updated', '更新日']]
+    .forEach(([id, key, label]) => {
+      const b = document.getElementById(id);
+      if (!b) return;
+      b.textContent = cur.key === key ? label + (cur.dir > 0 ? ' ▲' : ' ▼') : label;
+      b.classList.toggle('on', cur.key === key);
+    });
+}
+
+/* 曲の一覧を描く。
+   この端末に保存した曲（localSongs）とクラウドの曲（cloudStore）で
+   見た目も操作も同じなので、「曲をどこから取るか」「並び順をどこに覚えるか」
+   だけを cfg で入れ替えて使い回します。 */
+function renderList(cfg) {
+  const host = document.getElementById(cfg.listId);
+  if (!host) return;
+  const rows = cfg.rows();                       // [{name, notes, updated}]
+  const meta = cfg.getMeta();
+  const g = libGroups(rows.map(r => r.name), meta);
+  syncFolderSelect(cfg.selId, g.folders);
+  syncSortButtons(cfg, meta);
   host.innerHTML = '';
-  if (!Object.keys(lib).length) {
+  if (!rows.length) {
     const e = document.createElement('div');
     e.className = 'empty';
-    e.textContent = 'まだ保存した曲はありません。上の欄に名前を入れて「この名前で保存」。';
+    e.textContent = cfg.empty;
     host.appendChild(e);
     return;
   }
 
+  const info = {};
+  rows.forEach(r => { info[r.name] = r; });
   const closed = {};
   meta.closed.forEach(f => { closed[f] = true; });
+
+  const save = m => { cfg.setMeta(m); renderList(cfg); };
+
+  /* ---- 並べ替えの中身 ---- */
+
+  /* name を folder の中の pos 番目へ移す（pos は、その曲を抜いた状態で数えた位置）。
+     並び順は全体で1本なので、同じフォルダの曲との前後関係だけ合わせれば足ります */
+  const moveTo = (name, folder, pos) => {
+    const m = cfg.getMeta();
+    const fname = folder || NOFOLDER;
+    const order = g.order.filter(n => n !== name);
+    const inFolder = order.filter(n => (m.of[n] || NOFOLDER) === fname);
+    let at = order.length;
+    if (inFolder.length) {
+      at = pos >= inFolder.length
+         ? order.indexOf(inFolder[inFolder.length - 1]) + 1
+         : order.indexOf(inFolder[pos]);
+    }
+    order.splice(at, 0, name);
+    m.order = order;
+    m.folders = g.folders;
+    if (fname) m.of[name] = fname; else delete m.of[name];
+    m.closed = m.closed.filter(f => f !== fname);   // 移した先は開いておく
+    save(m);
+  };
+
+  /* ▲▼。画面に出ている並びをひとつぶん上/下へ。
+     フォルダの境を越えるときは、となりのフォルダへ移ります */
+  const nudge = (name, dir) => {
+    let gi = -1, si = -1;
+    g.shown.forEach((grp, k) => {
+      const i = grp.songs.indexOf(name);
+      if (i >= 0) { gi = k; si = i; }
+    });
+    if (gi < 0) return;
+    const grp = g.shown[gi];
+    if (dir < 0) {
+      if (si > 0) moveTo(name, grp.name, si - 1);
+      else if (gi > 0) moveTo(name, g.shown[gi - 1].name, g.shown[gi - 1].songs.length);
+    } else {
+      if (si < grp.songs.length - 1) moveTo(name, grp.name, si + 1);
+      else if (gi < g.shown.length - 1) moveTo(name, g.shown[gi + 1].name, 0);
+    }
+  };
+
+  /* ドラッグした曲を、target の前／後ろへ入れる */
+  const dropOn = (name, folder, target, after) => {
+    const fname = folder || NOFOLDER;
+    const grp = g.groups.filter(x => x.name === fname)[0];
+    const songs = (grp ? grp.songs : []).filter(n => n !== name);
+    let pos = songs.indexOf(target);
+    if (pos < 0) pos = songs.length;
+    else if (after) pos++;
+    moveTo(name, fname, pos);
+  };
+
+  /* フォルダそのものを上下に動かす */
+  const moveFolder = (fname, dir) => {
+    const m = cfg.getMeta();
+    const i = m.folders.indexOf(fname);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= m.folders.length) return;
+    m.folders[i] = m.folders[j];
+    m.folders[j] = fname;
+    save(m);
+  };
 
   const btn = (label, title, fn) => {
     const b = document.createElement('button');
@@ -2908,16 +2967,15 @@ function renderSongList() {
   };
 
   /* ---- フォルダの見出し ---- */
-  const folderHead = (grp, gi) => {
+  const folderHead = grp => {
     const h = document.createElement('div');
     h.className = 'fhead';
     const real = grp.name !== NOFOLDER;
     const shut = !!closed[grp.name];
     h.appendChild(btn(shut ? '▸' : '▾', shut ? '開く' : 'たたむ', () => {
-      const m = metaLoad();
+      const m = cfg.getMeta();
       m.closed = shut ? m.closed.filter(f => f !== grp.name) : m.closed.concat([grp.name]);
-      metaStore(m);
-      renderSongList();
+      save(m);
     }));
     const nm = document.createElement('span');
     nm.className = 'nm';
@@ -2932,25 +2990,23 @@ function renderSongList() {
       h.appendChild(btn('名前', 'フォルダの名前を変える', () => {
         const to = (prompt('フォルダの新しい名前', grp.name) || '').trim();
         if (!to || to === grp.name) return;
-        const m = metaLoad();
+        const m = cfg.getMeta();
         if (m.folders.indexOf(to) >= 0) { alert('「' + to + '」はすでにあります。'); return; }
         m.folders = m.folders.map(f => (f === grp.name ? to : f));
         Object.keys(m.of).forEach(n => { if (m.of[n] === grp.name) m.of[n] = to; });
         m.closed = m.closed.map(f => (f === grp.name ? to : f));
-        metaStore(m);
-        renderSongList();
+        save(m);
       }));
       h.appendChild(btn('▲', 'このフォルダを上へ', () => moveFolder(grp.name, -1)));
       h.appendChild(btn('▼', 'このフォルダを下へ', () => moveFolder(grp.name, 1)));
       h.appendChild(btn('削除', 'フォルダだけ消す（中の曲は残ります）', () => {
         if (!confirm('フォルダ「' + grp.name + '」を削除しますか？\n' +
                      '中の' + grp.songs.length + '曲は消えず、「フォルダなし」に移ります。')) return;
-        const m = metaLoad();
+        const m = cfg.getMeta();
         m.folders = m.folders.filter(f => f !== grp.name);
         Object.keys(m.of).forEach(n => { if (m.of[n] === grp.name) delete m.of[n]; });
         m.closed = m.closed.filter(f => f !== grp.name);
-        metaStore(m);
-        renderSongList();
+        save(m);
       }));
     }
 
@@ -2964,18 +3020,17 @@ function renderSongList() {
     h.addEventListener('drop', e => {
       if (!dragName) return;
       e.preventDefault();
-      moveSongTo(dragName, grp.name, 0);
+      moveTo(dragName, grp.name, 0);
     });
     return h;
   };
 
   /* ---- 曲の行 ---- */
   const songRow = (name, grp) => {
-    let count = '';
-    try { count = JSON.parse(lib[name]).notes.length + '音'; } catch (e) { /* 無視 */ }
-    /* 最終更新日。前に保存した曲には記録がないので、そのときは出しません */
-    const at = meta.at[name];
-    if (at) count += (count ? '・' : '') + shortDate(at);
+    const r = info[name] || {};
+    let sub = r.notes ? r.notes + '音' : '';
+    if (r.updated) sub += (sub ? '・' : '') + shortDate(r.updated);
+
     const row = document.createElement('div');
     row.className = 'row song';
     row.draggable = true;
@@ -2990,10 +3045,10 @@ function renderSongList() {
     nm.className = 'nm';
     nm.textContent = name;
     row.appendChild(nm);
-    const sub = document.createElement('span');
-    sub.className = 'sub';
-    sub.textContent = count;
-    row.appendChild(sub);
+    const sb = document.createElement('span');
+    sb.className = 'sub';
+    sb.textContent = sub;
+    row.appendChild(sb);
 
     /* 上下ボタンは縦に積む。横に並べると、そのぶん曲名が狭くなるため */
     const udcol = document.createElement('div');
@@ -3003,29 +3058,18 @@ function renderSongList() {
       b.className = 'mini ud';
       udcol.appendChild(b);
     };
-    ud('▲', '上へ', () => nudgeSong(name, -1));
-    ud('▼', '下へ', () => nudgeSong(name, 1));
+    ud('▲', '上へ', () => nudge(name, -1));
+    ud('▼', '下へ', () => nudge(name, 1));
     row.appendChild(udcol);
 
     const open = document.createElement('button');
     open.textContent = '開く';
-    open.addEventListener('click', () => { loadSong(name); });
+    open.addEventListener('click', () => cfg.open(name));
     row.appendChild(open);
 
     const del = document.createElement('button');
     del.textContent = '削除';
-    del.addEventListener('click', () => {
-      if (!confirm('「' + name + '」を削除しますか？')) return;
-      const l = libLoad();
-      delete l[name];
-      libStore(l);
-      const m = metaLoad();
-      m.order = m.order.filter(n => n !== name);
-      delete m.of[name];
-      delete m.at[name];
-      metaStore(m);
-      renderSongList();
-    });
+    del.addEventListener('click', () => { if (cfg.remove(name)) renderList(cfg); });
     row.appendChild(del);
 
     /* ---- つかんで動かす（パソコン向け。スマホは▲▼で動かします） ---- */
@@ -3043,8 +3087,8 @@ function renderSongList() {
       clearDropMark(host);
     });
     const half = e => {
-      const r = row.getBoundingClientRect();
-      return (e.clientY - r.top) > r.height / 2;      // 行の下半分なら「この行の下」
+      const b = row.getBoundingClientRect();
+      return (e.clientY - b.top) > b.height / 2;     // 行の下半分なら「この行の下」
     };
     row.addEventListener('dragover', e => {
       if (!dragName || dragName === name) return;
@@ -3055,89 +3099,101 @@ function renderSongList() {
     row.addEventListener('drop', e => {
       if (!dragName || dragName === name) return;
       e.preventDefault();
-      dropOnSong(dragName, grp.name, name, half(e));
+      dropOn(dragName, grp.name, name, half(e));
     });
     return row;
   };
 
-  g.shown.forEach((grp, gi) => {
+  g.shown.forEach(grp => {
     if (!g.plain) {
-      host.appendChild(folderHead(grp, gi));
+      host.appendChild(folderHead(grp));
       if (closed[grp.name]) return;
     }
     grp.songs.forEach(name => host.appendChild(songRow(name, grp)));
   });
 }
 
-/* フォルダそのものを上下に動かす */
-function moveFolder(name, dir) {
-  const m = metaLoad();
-  const i = m.folders.indexOf(name);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= m.folders.length) return;
-  m.folders[i] = m.folders[j];
-  m.folders[j] = name;
-  metaStore(m);
-  renderSongList();
-}
-
-/* ドラッグした曲を、target の前／後ろへ入れる */
-function dropOnSong(name, folder, target, after) {
-  const meta = metaLoad();
-  const g = libGroups(libLoad(), meta);
-  const fname = folder || NOFOLDER;
-  const grp = g.groups.filter(x => x.name === fname)[0];
-  const songs = (grp ? grp.songs : []).filter(n => n !== name);
-  let pos = songs.indexOf(target);
-  if (pos < 0) pos = songs.length;
-  else if (after) pos++;
-  moveSongTo(name, fname, pos);
-}
-
 /* ＋新しいフォルダ */
-function newFolder() {
+function newFolder(cfg) {
   const name = (prompt('フォルダの名前') || '').trim();
   if (!name) return;
-  const m = metaLoad();
+  const m = cfg.getMeta();
   if (m.folders.indexOf(name) >= 0) { alert('「' + name + '」はすでにあります。'); return; }
   m.folders.push(name);
-  metaStore(m);
-  renderSongList();
-  syncFolderSelect(m.folders, name);
+  cfg.setMeta(m);
+  renderList(cfg);
+  syncFolderSelect(cfg.selId, m.folders, name);
 }
 
 /* 名前／最終更新日で並べ直す。押すたびに逆順になります。
    並び順は1本なので、フォルダ分けはそのままで、それぞれの中が並び替わります。
    dir は 1 が昇順（名前なら あ→ん、更新日なら古い順）。
    更新日は「新しいものを先に見たい」ことが多いので、はじめは逆順から */
-function sortSongs(key) {
-  const m = metaLoad();
+function sortSongs(cfg, key) {
+  const m = cfg.getMeta();
   const cur = m.sort || {};
   const first = key === 'updated' ? -1 : 1;
   const dir = cur.key === key ? -cur.dir : first;
-  const at = m.at;
-  const names = Object.keys(libLoad());
+  const rows = cfg.rows();
+  const at = {};
+  rows.forEach(r => { at[r.name] = r.updated || 0; });
+  const names = rows.map(r => r.name);
   names.sort((a, b) => {
-    const d = key === 'updated' ? (at[a] || 0) - (at[b] || 0)
-                                : a.localeCompare(b, 'ja');
+    const d = key === 'updated' ? at[a] - at[b] : a.localeCompare(b, 'ja');
     return (d || a.localeCompare(b, 'ja')) * dir;
   });
   m.order = names;
   m.sort = { key: key, dir: dir };
-  metaStore(m);
-  renderSongList();
+  cfg.setMeta(m);
+  renderList(cfg);
 }
 
-/* 並べ替えボタンに、いまどちら向きで並んでいるかの矢印を出す */
-function syncSortButtons(meta) {
-  const cur = meta.sort || {};
-  [['sortName', 'name', '名前'], ['sortDate', 'updated', '更新日']].forEach(([id, key, label]) => {
-    const b = document.getElementById(id);
-    if (!b) return;
-    b.textContent = cur.key === key ? label + (cur.dir > 0 ? ' ▲' : ' ▼') : label;
-    b.classList.toggle('on', cur.key === key);
-  });
-}
+/* ---- この端末に保存した曲 ---- */
+const localSongs = {
+  listId: 'songList', selId: 'songFolder',
+  sortIds: ['sortName', 'sortDate'],
+  empty: 'まだ保存した曲はありません。上の欄に名前を入れて「この名前で保存」。',
+  rows() {
+    const lib = libLoad(), meta = metaLoad();
+    return Object.keys(lib).map(name => {
+      let notes = 0;
+      try { notes = JSON.parse(lib[name]).notes.length; } catch (e) { /* 無視 */ }
+      return { name: name, notes: notes, updated: meta.at[name] || 0 };
+    });
+  },
+  getMeta: metaLoad,
+  setMeta: metaStore,
+  open(name) { loadSong(name); },
+  remove(name) {
+    if (!confirm('「' + name + '」を削除しますか？')) return false;
+    const l = libLoad();
+    delete l[name];
+    libStore(l);
+    const m = metaLoad();
+    m.order = m.order.filter(n => n !== name);
+    delete m.of[name];
+    delete m.at[name];
+    metaStore(m);
+    return true;
+  }
+};
+
+/* ---- クラウドに置いた曲。並び順とフォルダはサーバーに預けるので、
+       別の端末で開いても同じ並びになります ---- */
+const cloudStore = {
+  listId: 'cloudList', selId: 'cloudFolder',
+  sortIds: ['cloudSortName', 'cloudSortDate'],
+  empty: 'クラウドにはまだ曲がありません。上の欄に名前を入れて「この名前でクラウドに保存」。',
+  rows: () => cloudSongs.map(x => ({ name: x.name, notes: x.notes, updated: x.updated })),
+  getMeta: () => metaNorm(cloudMeta),
+  setMeta(m) { cloudMeta = m; cloudMetaSave(); },
+  open(name) { cloudOpen(name); },
+  /* 消すのも通信なので、終わったら一覧ごと取り直します（ここでは描き直さない） */
+  remove(name) { cloudDelete(name); return false; }
+};
+
+function renderSongList() { renderList(localSongs); }
+function renderCloudList() { renderList(cloudStore); }
 
 function saveSong() {
   const name = document.getElementById('songName').value.trim() || state.title || '無題の曲';
@@ -4171,9 +4227,12 @@ function bindUi() {
   $('acctRegister').addEventListener('click', () => acctSubmit('register'));
   $('acctLogout').addEventListener('click', () => acctLogout());
   $('acctDelete').addEventListener('click', () => acctDelete());
-  $('folderNew').addEventListener('click', () => newFolder());
-  $('sortName').addEventListener('click', () => sortSongs('name'));
-  $('sortDate').addEventListener('click', () => sortSongs('updated'));
+  $('folderNew').addEventListener('click', () => newFolder(localSongs));
+  $('sortName').addEventListener('click', () => sortSongs(localSongs, 'name'));
+  $('sortDate').addEventListener('click', () => sortSongs(localSongs, 'updated'));
+  $('cloudFolderNew').addEventListener('click', () => newFolder(cloudStore));
+  $('cloudSortName').addEventListener('click', () => sortSongs(cloudStore, 'name'));
+  $('cloudSortDate').addEventListener('click', () => sortSongs(cloudStore, 'updated'));
   $('cloudSave').addEventListener('click', () => cloudSave());
   $('cloudReload').addEventListener('click', () => cloudReload());
   /* パスワード欄で Enter を押したらログイン */

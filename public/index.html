@@ -210,7 +210,7 @@
   .secthead .who{font-size:12px;color:var(--muted);text-align:right;min-width:0;
                  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #songList{max-height:42vh}
-  #cloudList{max-height:26vh}
+  #cloudList{max-height:34vh}
   .msg{font-size:12px;margin:0 0 8px}
   .msg.err{color:#b3261e}
   .msg.ok{color:#146c2e}
@@ -618,6 +618,16 @@ function writeAdmaxTag(tags) {
           <button id="cloudReload">一覧を読み直す</button>
           <button id="acctLogout">ログアウト</button>
         </div>
+        <div class="mrow wrap">
+          <span class="flbl">入れ先</span>
+          <select id="cloudFolder"></select>
+          <button id="cloudFolderNew">＋新しいフォルダ</button>
+        </div>
+        <div class="sortbar">
+          <span class="flbl">並べ替え</span>
+          <button class="mini" id="cloudSortName" title="名前の順に並べ直します。もう一度押すと逆順">名前</button>
+          <button class="mini" id="cloudSortDate" title="最終更新日の順に並べ直します。もう一度押すと逆順">更新日</button>
+        </div>
         <div id="cloudList" class="list"></div>
         <p class="note">
           <button class="linky" id="acctDelete">アカウントを削除する</button>
@@ -642,7 +652,8 @@ function writeAdmaxTag(tags) {
       保存先は<b>この端末のこのブラウザの中</b>です。別の端末（スマホなど）へ移すときは
       「🔗 リンクをコピー」で出たURLを送ってください。そのURLを開くと曲がそのまま開きます。
       曲が増えたら<b>フォルダ</b>で分けられます。⠿ をつかむか ▲▼ で並べ替えられます
-      （フォルダと並び順も、この端末のこのブラウザの中だけで覚えます）。
+      （この端末ぶんのフォルダと並び順は、この端末のこのブラウザの中だけで覚えます。
+      クラウドのほうはクラウドに預けるので、別の端末でも同じ並びで開きます）。
     </p>
   </div>
 </div>

@@ -8,8 +8,9 @@
      u:<ログインID>   … {uid, salt, hash, created}
      t:<トークン>     … {uid, id}            （期限つき。ログイン状態の記録）
      s:<uid>:<曲名>   … 曲の中身（JSON 文字列）。表示用の名前などは metadata に入れる
+     m:<uid>          … 曲の並び順とフォルダ分け（JSON 文字列）
 
-   退会すると u: と s: を消します。t:（ログイン記録）は期限切れに任せますが、
+   退会すると u: と s: と m: を消します。t:（ログイン記録）は期限切れに任せますが、
    session() が「その利用者がまだいるか」を見るので、消したあとは入れません。
 
    パスワードの扱いについて:
@@ -30,6 +31,7 @@ const TOKEN_TTL = 60 * 60 * 24 * 180;   // ログイン状態を保つ期間（1
 const MAX_ID    = 40;                   // ログインIDの長さ（KV のキーに収めるため）
 const MAX_NAME  = 120;                  // 曲名の長さ（同上）
 const MAX_SONG  = 300 * 1024;           // 1曲あたりの大きさ
+const MAX_META  = 64 * 1024;            // 並び順とフォルダ分けの大きさ
 
 const HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -177,6 +179,25 @@ async function delSong(env, s, name) {
   return json({ ok: true });
 }
 
+/* ---------- 曲の並び順とフォルダ分け ----------
+   中身はブラウザ側が作ったものをそのまま預かるだけです。
+   {folders, of, order, closed, sort} という形ですが、サーバーは中を見ません。 */
+const metaKey = uid => 'm:' + uid;
+
+async function getMeta(env, s) {
+  const data = await env.KV.get(metaKey(s.uid));
+  return json({ meta: data ? JSON.parse(data) : null });
+}
+
+async function putMeta(req, env, s) {
+  const b = await readJson(req);
+  if (!b || typeof b.meta !== 'object' || b.meta === null) return bad('送信された内容を読み取れませんでした');
+  const text = JSON.stringify(b.meta);
+  if (text.length > MAX_META) return bad('フォルダ分けの情報が大きすぎます');
+  await env.KV.put(metaKey(s.uid), text);
+  return json({ ok: true });
+}
+
 /* ---------- 退会 ---------- */
 /* その人の曲をすべて消してから、利用者そのものを消す。元に戻せない。
    ほかの端末に残っているログイン記録は、session() が
@@ -188,6 +209,7 @@ async function delAccount(env, s) {
     for (const k of r.keys) { await env.KV.delete(k.name); n++; }
     cursor = r.list_complete ? null : r.cursor;
   } while (cursor);
+  await env.KV.delete(metaKey(s.uid));
   await env.KV.delete('u:' + s.id);
   await env.KV.delete('t:' + s.token);
   return json({ ok: true, deleted: n });
@@ -208,6 +230,11 @@ async function api(req, env, path) {
   if (path === '/api/me') return json({ id: s.id });
 
   if (path === '/api/account' && req.method === 'DELETE') return delAccount(env, s);
+
+  if (path === '/api/meta') {
+    if (req.method === 'GET') return getMeta(env, s);
+    if (req.method === 'PUT') return putMeta(req, env, s);
+  }
 
   if (path === '/api/songs') {
     const url = new URL(req.url);
